@@ -39,7 +39,7 @@ const createTablesQuery = `
     user_high_rank INT DEFAULT 1,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    reqsentby VARCHAR(20),
+unread INT DEFAULT 0,
 
     -- Ensures pair is unique and user_low is strictly smaller than user_high
     CONSTRAINT unique_user_pair UNIQUE (user_low, user_high),

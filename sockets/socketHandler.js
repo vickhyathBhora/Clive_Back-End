@@ -8,6 +8,7 @@ const {
   removeContactTransaction,
   getMessagesBetweenUsers,
   createPendingContact,
+  deleteContactBetweenUsers,
 } = require('../config/quaryfuns');
 
 
@@ -159,8 +160,6 @@ addConnectedUser(currentUserId, socket.id);
 
         socket.emit('delete_chat_history_res', {
           success: true,
-          targetId,
-          message: 'Chat history deleted successfully',
         });
       } catch (error) {
         console.error('Error in delete_chat_history socket handler:', error);
@@ -170,6 +169,8 @@ addConnectedUser(currentUserId, socket.id);
         });
       }
     });
+
+    
 socket.on('get_messages', async (data) => {
   try {
          const currentUserId = socket.userId;
@@ -277,6 +278,45 @@ socket.on('send_invite', async (targetUserId, targetUserMail) => {
     socket.emit('send_invite_res', {
       success: false,
       message: 'Failed to send invite',
+    });
+  }
+});
+
+
+socket.on('reject_invite', async (data) => {
+  try {
+    console.log(data);
+    const currentUserId = socket.userId;
+    const targetUserId = data.contactId;
+
+    if (!currentUserId || !targetUserId) {
+      return socket.emit('reject_invite_res', {
+        success: false,
+        message: 'Invalid sender or target user ID',
+      });
+    }
+
+    console.log(`Rejecting invite between ${currentUserId} and ${targetUserId}`);
+
+    const result = await deleteContactBetweenUsers(currentUserId, targetUserId);
+console.log(result);
+    if (result.success && result.deleted) {
+     socket.emit('reject_invite_res', {
+  success: true,
+  contactId: targetUserId,
+  message: 'Invite rejected successfully',
+});
+    } else {
+      socket.emit('reject_invite_res', {
+        success: false,
+        message: 'Contact record not found or already deleted',
+      });
+    }
+  } catch (err) {
+    console.error('Error in reject_invite socket event:', err);
+    socket.emit('reject_invite_res', {
+      success: false,
+      message: 'Failed to reject invite',
     });
   }
 });

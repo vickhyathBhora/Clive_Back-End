@@ -7,28 +7,41 @@ const db = require('../config/db');
  */
 async function fetchAllContacts(userId) {
   const query = `
-    SELECT 
-      c.id AS contact_id,
-      c.status,
-      c.created_at AS contact_created_at,
-      CASE 
-        WHEN c.user_low = $1 THEN c.user_low_rank 
-        ELSE c.user_high_rank 
-      END AS rank,
-      jsonb_build_object(
-        'id', u.id,
-        'name', u.name,
-        'email', u.email,
-        'avatar_url', u.avatar_url
-      ) AS contact,
-      c.reqsentby
-    FROM contacts c
-    JOIN users u ON u.id = CASE 
-      WHEN c.user_low = $1 THEN c.user_high 
-      ELSE c.user_low 
-    END
-    WHERE c.user_low = $1 OR c.user_high = $1
-    ORDER BY rank ASC;
+SELECT 
+  c.id AS contact_id,
+  c.status,
+  c.initiated_by,
+  c.unread,
+  c.created_at AS contact_created_at,
+  -- Pick your rank depending on which side of the relationship you sit on
+  CASE 
+    WHEN c.user_low = $1 THEN c.user_low_rank 
+    ELSE c.user_high_rank 
+  END AS rank,
+  
+  -- Package the friend's profile into a single JSON object
+  jsonb_build_object(
+    'id', u.id,
+    'name', u.name,
+    'email', u.email,
+    'avatar_url', u.avatar_url
+  ) AS contact
+
+FROM contacts c
+
+-- STEP 1: Identify which ID belongs to your friend
+CROSS JOIN LATERAL (
+  SELECT CASE 
+    WHEN c.user_low = $1 THEN c.user_high 
+    ELSE c.user_low 
+  END AS friend_id
+) f
+
+-- STEP 2: Join the users table directly using that friend_id
+JOIN users u ON u.id = f.friend_id
+
+WHERE c.user_low = $1 OR c.user_high = $1
+ORDER BY rank ASC;
   `;
 
   try {
@@ -61,118 +74,58 @@ async function getUserById(userId) {
  */
 async function deleteMessagesBetweenUsers(userId1, userId2) {
   try {
-    // A. Delete message history
-    await db.query(
+    // Execute SQL query to delete all messages exchanged between userId1 and userId2
+    const result = await db.query(
       `DELETE FROM messages 
        WHERE (sender_id = $1 AND receiver_id = $2)
           OR (sender_id = $2 AND receiver_id = $1);`,
       [userId1, userId2]
     );
 
-    // B. Get target contact's current rank & total contact count
-    const statsRes = await db.query(
-      `SELECT 
-         CASE WHEN user_low = $1 THEN user_low_rank ELSE user_high_rank END AS old_rank,
-         (SELECT COUNT(*) FROM contacts WHERE user_low = $1 OR user_high = $1) AS total_contacts
-       FROM contacts
-       WHERE (user_low = $1 AND user_high = $2) OR (user_low = $2 AND user_high = $1);`,
-      [userId1, userId2]
-    );
+    // Return success along with the count of deleted messages
+    return { 
+      success: true, 
+      deletedCount: result.rowCount 
+    };
 
-    if (statsRes.rows.length === 0) return { success: true };
-
-    const oldRank = parseInt(statsRes.rows[0].old_rank, 10);
-    const totalContacts = parseInt(statsRes.rows[0].total_contacts, 10);
-
-    // If it's already at the bottom, no re-indexing needed
-    if (oldRank === totalContacts) return { success: true };
-
-    // C. Shift contacts that were BELOW this one UP by 1 (rank - 1)
-    await db.query(
-      `UPDATE contacts
-       SET 
-         user_low_rank = CASE 
-           WHEN user_low = $1 AND user_low_rank > $2 THEN user_low_rank - 1 
-           ELSE user_low_rank 
-         END,
-         user_high_rank = CASE 
-           WHEN user_high = $1 AND user_high_rank > $2 THEN user_high_rank - 1 
-           ELSE user_high_rank 
-         END
-       WHERE user_low = $1 OR user_high = $1;`,
-      [userId1, oldRank]
-    );
-
-    // D. Move target contact to the exact last rank position (totalContacts)
-    await db.query(
-      `UPDATE contacts
-       SET 
-         user_low_rank = CASE WHEN user_low = $1 THEN $3 ELSE user_low_rank END,
-         user_high_rank = CASE WHEN user_high = $1 THEN $3 ELSE user_high_rank END
-       WHERE (user_low = $1 AND user_high = $2) OR (user_low = $2 AND user_high = $1);`,
-      [userId1, userId2, totalContacts]
-    );
-
-    return { success: true };
-  } catch (err) {
-    console.error('Error in deleteMessagesBetweenUsers:', err);
-    throw err;
+  } catch (error) {
+    console.error('Error deleting messages:', error);
+    throw error;
   }
 }
-
 /**
  * 4. Remove contact AND messages (re-indexes remaining ranks so no rank gap is left)
  */
 async function removeContactTransaction(userId, targetId) {
+  const client = await db.connect();
   try {
-    // A. Find deleted contact's rank before deleting
-    const rankRes = await db.query(
-      `SELECT CASE WHEN user_low = $1 THEN user_low_rank ELSE user_high_rank END AS old_rank
-       FROM contacts 
-       WHERE (user_low = $1 AND user_high = $2) OR (user_low = $2 AND user_high = $1);`,
-      [userId, targetId]
-    );
+    await client.query('BEGIN');
 
-    const oldRank = rankRes.rows[0] ? parseInt(rankRes.rows[0].old_rank, 10) : null;
-
-    // B. Delete all messages between the two users
-    await db.query(
+    // 1. Delete all chat messages between the two users
+    await client.query(
       `DELETE FROM messages 
        WHERE (sender_id = $1 AND receiver_id = $2)
           OR (sender_id = $2 AND receiver_id = $1);`,
       [userId, targetId]
     );
 
-    // C. Delete the contact row
-    await db.query(
+    // 2. Delete the contact relationship row
+    await client.query(
       `DELETE FROM contacts 
        WHERE (user_low = $1 AND user_high = $2)
           OR (user_low = $2 AND user_high = $1);`,
       [userId, targetId]
     );
 
-    // D. Shift remaining contacts UP by 1 to fill the deleted slot
-    if (oldRank !== null) {
-      await db.query(
-        `UPDATE contacts
-         SET 
-           user_low_rank = CASE 
-             WHEN user_low = $1 AND user_low_rank > $2 THEN user_low_rank - 1 
-             ELSE user_low_rank 
-           END,
-           user_high_rank = CASE 
-             WHEN user_high = $1 AND user_high_rank > $2 THEN user_high_rank - 1 
-             ELSE user_high_rank 
-           END
-         WHERE user_low = $1 OR user_high = $1;`,
-        [userId, oldRank]
-      );
-    }
-
+    await client.query('COMMIT');
     return { success: true };
+
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error in removeContactTransaction:', err);
     throw err;
+  } finally {
+    client.release();
   }
 }
 async function getMessagesBetweenUsers(userId1, userId2) {
@@ -192,9 +145,31 @@ async function getMessagesBetweenUsers(userId1, userId2) {
   }
 }
 
+async function deleteContactBetweenUsers(userId1, userId2) {
+  try {
+    const { rowCount } = await db.query(
+      `DELETE FROM contacts 
+       WHERE user_low = LEAST($1::uuid, $2::uuid) 
+         AND user_high = GREATEST($1::uuid, $2::uuid);`,
+      [userId1, userId2]
+    );
+
+    return {
+      success: true,
+      deleted: rowCount > 0
+    };
+  } catch (err) {
+    console.error('Error in deleteContactBetweenUsers:', err);
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
 async function createPendingContact(userId1, userId2) {
   try {
-    // Ordering UUIDs lexically for user_low and user_high constraints
+    // Ordering UUIDs lexically to satisfy user_low < user_high constraint
     const isSenderLow = String(userId1) < String(userId2);
     const userLow = isSenderLow ? userId1 : userId2;
     const userHigh = isSenderLow ? userId2 : userId1;
@@ -208,35 +183,45 @@ async function createPendingContact(userId1, userId2) {
           initiated_by, 
           user_low_rank, 
           user_high_rank, 
-          reqsentby
+          unread
         )
         VALUES (
           $1::uuid, 
           $2::uuid, 
           'pending'::varchar, 
           $3::uuid, 
-          1, 
-          1, 
-          $3::uuid
+          0, 
+          0, 
+          0
         )
         ON CONFLICT (user_low, user_high) DO NOTHING
-        RETURNING id AS contact_id, created_at AS contact_created_at, status, user_low, user_high, user_low_rank, user_high_rank, reqsentby
+        RETURNING 
+          id AS contact_id, 
+          created_at AS contact_created_at, 
+          status, 
+          initiated_by,
+          unread,
+          user_low, 
+          user_high, 
+          user_low_rank, 
+          user_high_rank
       )
       SELECT 
         i.contact_id,
-        i.contact_created_at,
         i.status,
+        i.initiated_by,
+        i.unread,
+        i.contact_created_at,
         CASE 
           WHEN i.user_low = $3::uuid THEN i.user_low_rank 
           ELSE i.user_high_rank 
         END AS rank,
-        json_build_object(
+        jsonb_build_object(
           'id', u.id,
           'name', u.name,
           'email', u.email,
           'avatar_url', u.avatar_url
-        ) AS contact,
-        i.reqsentby
+        ) AS contact
       FROM inserted i
       JOIN users u ON u.id = $4::uuid;
     `;
@@ -255,4 +240,5 @@ module.exports = {
   getUserById,
   deleteMessagesBetweenUsers,
   removeContactTransaction,
+  deleteContactBetweenUsers,
 };
