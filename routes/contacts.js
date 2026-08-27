@@ -65,46 +65,67 @@ router.get('/search', authenticateToken, async (req, res) => {
 });
 
 router.get('/offline_unseen', authenticateToken, async (req, res) => {
+  console.log('--- 🚀 [GET /offline_unseen] Route Triggered ---');
+  
   try {
-    const userId = req.user.id;
+    // 1. Log req.user payload received from authenticateToken middleware
+    console.log('📌 [DEBUG] req.user:', req.user);
+
+    const userId = req.user?.id || req.user?.userId;
+    console.log('📌 [DEBUG] Extracted userId:', userId);
 
     if (!userId) {
+      console.warn('⚠️ [WARN] User ID missing in token payload');
       return res.status(400).json({ 
         success: false, 
         message: 'User ID missing in token payload' 
       });
     }
 
+    // 2. Query definition using safe UUID casting
     const offlineUnseenQuery = `
-   SELECT 
-  id,
-  CASE 
-    WHEN user_low = $1::uuid THEN user_low_rank 
-    ELSE user_high_rank 
-  END AS rank
-FROM contacts
-WHERE (user_low = $1::uuid AND user_low_time IS NOT NULL)
-   OR (user_high = $1::uuid AND user_high_time IS NOT NULL)
-ORDER BY (
-  CASE 
-    WHEN user_low = $1::uuid THEN user_low_time 
-    ELSE user_high_time 
-  END
-) DESC;
+      SELECT 
+        id,
+        CASE 
+          WHEN user_low = $1::text::uuid THEN user_low_rank 
+          ELSE user_high_rank 
+        END AS rank
+      FROM contacts
+      WHERE (user_low = $1::text::uuid AND user_low_time IS NOT NULL)
+         OR (user_high = $1::text::uuid AND user_high_time IS NOT NULL)
+      ORDER BY (
+        CASE 
+          WHEN user_low = $1::text::uuid THEN user_low_time 
+          ELSE user_high_time 
+        END
+      ) DESC;
     `;
 
+    console.log('📌 [DEBUG] Executing Database Query with param:', String(userId));
+
+    // 3. Execute DB Query
     const { rows } = await db.query(offlineUnseenQuery, [String(userId)]);
-console.log(rows);
+
+    console.log('✅ [SUCCESS] Query executed successfully. Total rows returned:', rows.length);
+    console.log('📌 [DEBUG] Rows output:', JSON.stringify(rows, null, 2));
+
     return res.status(200).json({
       success: true,
       data: rows
     });
 
   } catch (error) {
-    console.error('❌ Error in /offline_unseen route:', error);
+    // 4. Log detailed error metrics in Render logs
+    console.error('❌ [CRITICAL ERROR] /offline_unseen execution failed:');
+    console.error('   ├── Error Name:', error.name);
+    console.error('   ├── Error Message:', error.message);
+    console.error('   ├── PostgreSQL Error Code:', error.code || 'N/A');
+    console.error('   └── Stack Trace:\n', error.stack);
+
     return res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      debug_error: error.message // Temporarily exposed for quick frontend debugging
     });
   }
 });
