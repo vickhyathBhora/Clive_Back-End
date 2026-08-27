@@ -1,6 +1,5 @@
 // socketHandler.js
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const db = require('../config/db');
 const { socketConnectionGuard } = require('../middleware/systemGuard');
 const { applySocketThrottling } = require('../middleware/socketThrottle');
@@ -128,7 +127,9 @@ module.exports = function registerSocketHandlers(io) {
           try {
             // Retrieve profiles for notification email prior to deletion
             const targetUser = await getUserById(targetId);
-            const currentUser = await getUserById(currentUserId);
+            const currentUser =
+            
+            await getUserById(currentUserId);
     
             // Execute DB Transaction (handled safely inside quaryfuns)
             await removeContact(currentUserId, targetId);//send id only 
@@ -271,33 +272,8 @@ module.exports = function registerSocketHandlers(io) {
           }
         }
 
-        // 3. Unconditional Email Dispatch (Runs for ALL conditions: Local, Redis, or Offline)
-        if (targetUserMail) {
-          const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: targetUserMail,
-            subject: 'New Connection Request on ChatLive',
-            text: `Hello, you have a new connection request on ChatLive.\n\nLog in to accept or reject the request.\n\nBest regards,\nChatLive Team`,
-          };
-
-          transporter.sendMail(mailOptions).catch((emailErr) => {
-            console.error('Failed to send invite email:', emailErr.message);
-          });
-        }
-        // 4. Send email in ALL conditions (Online or Offline)
-        if (targetUserMail) {
-
-          const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: targetUserMail,
-            subject: 'New Connection Request on ChatLive',
-            text: `Hello, you have a new connection request on ChatLive.\n\nLog in to accept or reject the request.\n\nBest regards,\nChatLive Team... url`,
-          };
-
-          transporter.sendMail(mailOptions).catch((emailErr) => {
-            console.error('Failed to send invite email:', emailErr.message);
-          });
-        }
+      
+  
       } catch (err) {
         console.error('Error in send_invite socket handler:', err);
         socket.emit('send_invite_res', {
@@ -307,55 +283,7 @@ module.exports = function registerSocketHandlers(io) {
       }
     });
 
-socket.on('send_invite_new_user', async (data) => {
-  console.log('📩 Received send_invite_new_user payload:', data);
 
-  try {
-    const senderName = data?.user || 'A user';
-    const targetUserMail = data?.targetUserMail?.trim();
-    const clientAppUrl = process.env.FRONTEND_URL || 'https://chatlive-1595.netlify.app';
-
-    if (!targetUserMail) {
-      return socket.emit('send_invite_new_user_res', {
-        success: false,
-        message: 'Email address is required',
-      });
-    }
-
-    const mailOptions = {
-      from: `"ChatLive Team" <${process.env.EMAIL_USER}>`, // Explicit sender format
-      to: targetUserMail,
-      subject: `${senderName} invited you to join ChatLive!`, // Added missing subject line!
-      text: `Hello,\n\n${senderName} has invited you to connect on ChatLive:\n${clientAppUrl}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-          <h2 style="color: #333;">Join ChatLive</h2>
-          <p style="color: #555;">Hello,</p>
-          <p style="color: #555;"><strong>${senderName}</strong> invited you to connect on ChatLive.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${clientAppUrl}" style="background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Join & Connect</a>
-          </div>
-          <p style="color: #888; font-size: 12px;">Best regards,<br/>ChatLive Team</p>
-        </div>
-      `
-    };
-
-    const emailResult = await transporter.sendMail(mailOptions);
-    console.log(`✉️ Email successfully dispatched to: ${targetUserMail}`, emailResult.messageId);
-
-    socket.emit('send_invite_new_user_res', {
-      success: true,
-      message: `Mail sent to ${targetUserMail}`,
-    });
-
-  } catch (err) {
-    console.error('❌ Detailed Email Error:', err.message, err.stack);
-    socket.emit('send_invite_new_user_res', {
-      success: false,
-      message: err.message || 'Failed to send email invite',
-    });
-  }
-});
     socket.on('accept_invite', async (data) => {
       try {
         const currentUserId = socket.userId;
@@ -393,23 +321,7 @@ socket.on('send_invite_new_user', async (data) => {
         const friendEmail = friendUser?.email;
         const friendName = friendUser?.name || 'User';
 
-        // Helper mail sender
-        const sendAcceptanceEmail = async () => {
-          if (!friendEmail) return;
-          const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: friendEmail,
-            subject: 'Contact Request Update - ChatLive',
-            text: `Hello ${friendName},\n\nYour contact invitation was accepted!\n\nBest regards,\nChatLive Team`,
-          };
-
-          try {
-            await transporter.sendMail(mailOptions);
-            console.log(`✉️ Acceptance email sent to: ${friendEmail}`);
-          } catch (emailErr) {
-            console.error('Failed to send acceptance email:', emailErr.message);
-          }
-        };
+  
 
         // -------------------------------------------------------------
         // DUAL-LAYER PRESENCE CHECK FOR FRIEND (targetUserId)
@@ -565,22 +477,7 @@ socket.on('send_invite_new_user', async (data) => {
             message: `${rejectorName} declined your invitation`,
           });
 
-          // 2. Send Email
-          if (friendEmail) {
-            const mailOptions = {
-              from: process.env.EMAIL_USER,
-              to: friendEmail,
-              subject: 'Contact Request Update - ChatLive',
-              text: `Hello ${friendName},\n\n${rejectorName} has declined your contact invitation.\n\nBest regards,\nChatLive Team`,
-            };
-
-            try {
-              await transporter.sendMail(mailOptions);
-              console.log(`✉️ Rejection email sent to: ${friendEmail}`);
-            } catch (emailErr) {
-              console.error('Failed to send rejection email:', emailErr.message);
-            }
-          }
+     
 
           // -------------------------------------------------------------
           // STEP 2: REDIS CHECK (Target user is online on Server 2/3)
@@ -599,45 +496,13 @@ socket.on('send_invite_new_user', async (data) => {
               message: `${rejectorName} declined your invitation`,
             });
 
-            // 2. Send Email
-            if (friendEmail) {
-              const mailOptions = {
-                from: process.env.EMAIL_USER,
-                to: friendEmail,
-                subject: 'Contact Request Update - ChatLive',
-                text: `Hello ${friendName},\n\n${rejectorName} has declined your contact invitation.\n\nBest regards,\nChatLive Team`,
-              };
-
-              try {
-                await transporter.sendMail(mailOptions);
-                console.log(`✉️ Rejection email sent to: ${friendEmail}`);
-              } catch (emailErr) {
-                console.error('Failed to send rejection email:', emailErr.message);
-              }
-            }
+         
 
             // -------------------------------------------------------------
             // STEP 3: OFFLINE CHECK (Target user is offline everywhere)
             // -------------------------------------------------------------
           } else {
             console.log(`💤 User ${friendUserId} is offline on all servers. Only sending email.`);
-
-            // Send Email ONLY
-            if (friendEmail) {
-              const mailOptions = {
-                from: process.env.EMAIL_USER,
-                to: friendEmail,
-                subject: 'Contact Request Update - ChatLive',
-                text: `Hello ${friendName},\n\n${rejectorName} has declined your contact invitation.\n\nBest regards,\nChatLive Team`,
-              };
-
-              try {
-                await transporter.sendMail(mailOptions);
-                console.log(`✉️ Rejection email sent to: ${friendEmail}`);
-              } catch (emailErr) {
-                console.error('Failed to send rejection email:', emailErr.message);
-              }
-            }
           }
         }
       } catch (err) {
