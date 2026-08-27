@@ -24,11 +24,19 @@ router.post('/google-auth', async (req, res) => {
     let user;
 
     if (userResult.rows.length > 0) {
-      // User exists: Take existing row
-      user = userResult.rows[0];
+    const updatedUser = await db.query(
+      `UPDATE users 
+       SET name = COALESCE(name, $1), 
+           avatar_url = COALESCE(avatar_url, $2)
+       WHERE email = $3 
+       RETURNING id, email, name, avatar_url, created_at;`,
+      [name, avatarUrl, email]
+    );
+    user = updatedUser.rows[0];
+    console.log(`👤 Updated shadow user profile for: ${email}`);
     } else {
       // New User: Create entry with auto-generated UUID
-      const defaultName = name || email.split('@')[0];
+      const defaultName = name ||null;
       const newUser = await db.query(
         `INSERT INTO users (email, name, avatar_url) 
          VALUES ($1, $2, $3) 

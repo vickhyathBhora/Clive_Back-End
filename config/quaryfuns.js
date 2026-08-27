@@ -6,14 +6,19 @@ const db = require('../config/db');
  * Fetch messages on demand when a user clicks on a contact.
  */
 async function fetchAllContacts(userId) {
-  const query = `
-SELECT 
+ const query = `SELECT 
   c.id AS contact_id,
   c.status,
   c.initiated_by,
-  c.unread,
   c.created_at AS contact_created_at,
-  -- Pick your rank depending on which side of the relationship you sit on
+
+  -- Pick unseen count for your side
+  CASE 
+    WHEN c.user_low = $1 THEN c.user_low_unseen 
+    ELSE c.user_high_unseen 
+  END AS unseen,
+
+  -- Pick your rank depending on which side you sit on
   CASE 
     WHEN c.user_low = $1 THEN c.user_low_rank 
     ELSE c.user_high_rank 
@@ -29,7 +34,7 @@ SELECT
 
 FROM contacts c
 
--- STEP 1: Identify which ID belongs to your friend
+-- Identify which ID belongs to your friend for each row
 CROSS JOIN LATERAL (
   SELECT CASE 
     WHEN c.user_low = $1 THEN c.user_high 
@@ -37,12 +42,11 @@ CROSS JOIN LATERAL (
   END AS friend_id
 ) f
 
--- STEP 2: Join the users table directly using that friend_id
+-- Join the users table using that friend_id
 JOIN users u ON u.id = f.friend_id
 
 WHERE c.user_low = $1 OR c.user_high = $1
-ORDER BY rank ASC;
-  `;
+ORDER BY rank ASC`;
 
   try {
     const { rows } = await db.query(query, [userId]);
@@ -72,22 +76,17 @@ async function getUserById(userId) {
 /**
  * 3. Delete ONLY message history and move contact to bottom (with rank re-indexing)
  */
-async function deleteMessagesBetweenUsers(userId1, userId2) {
+async function deleteMessagesByContactId(contactId) {
   try {
-    // Execute SQL query to delete all messages exchanged between userId1 and userId2
     const result = await db.query(
-      `DELETE FROM messages 
-       WHERE (sender_id = $1 AND receiver_id = $2)
-          OR (sender_id = $2 AND receiver_id = $1);`,
-      [userId1, userId2]
+      `DELETE FROM messages WHERE contact_id = $1;`,
+      [contactId]
     );
 
-    // Return success along with the count of deleted messages
     return { 
       success: true, 
       deletedCount: result.rowCount 
     };
-
   } catch (error) {
     console.error('Error deleting messages:', error);
     throw error;
@@ -96,56 +95,42 @@ async function deleteMessagesBetweenUsers(userId1, userId2) {
 /**
  * 4. Remove contact AND messages (re-indexes remaining ranks so no rank gap is left)
  */
-async function removeContactTransaction(userId, targetId) {
-  const client = await db.connect();
+async function removeContact(contactId) {
   try {
-    await client.query('BEGIN');
-
-    // 1. Delete all chat messages between the two users
-    await client.query(
-      `DELETE FROM messages 
-       WHERE (sender_id = $1 AND receiver_id = $2)
-          OR (sender_id = $2 AND receiver_id = $1);`,
-      [userId, targetId]
+    const result = await db.query(
+      `DELETE FROM contacts WHERE id = $1 RETURNING *;`,
+      [contactId]
     );
 
-    // 2. Delete the contact relationship row
-    await client.query(
-      `DELETE FROM contacts 
-       WHERE (user_low = $1 AND user_high = $2)
-          OR (user_low = $2 AND user_high = $1);`,
-      [userId, targetId]
-    );
-
-    await client.query('COMMIT');
-    return { success: true };
-
+    return { 
+      success: true, 
+      data: result.rows[0],
+    };
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Error in removeContactTransaction:', err);
-    throw err;
-  } finally {
-    client.release();
+    console.error('Error in removeContact:', err);
+    return {
+      success: false,
+      message: err.message
+    };
   }
 }
-async function getMessagesBetweenUsers(userId1, userId2) {
+async function getMessagesByContactId(contactId, limit = 10) {
   try {
     const { rows } = await db.query(
-      `SELECT id, sender_id, receiver_id, content, status, created_at 
+      `SELECT id, contact_id, sender_id, receiver_id, content, created_at 
        FROM messages 
-       WHERE (sender_id = $1 AND receiver_id = $2) 
-          OR (sender_id = $2 AND receiver_id = $1)
-       ORDER BY created_at ASC;`,
-      [userId1, userId2]
+       WHERE contact_id = $1
+       ORDER BY created_at ASC
+       LIMIT $2;`,
+      [contactId, limit]
     );
     return rows;
   } catch (err) {
-    console.error('Error in getMessagesBetweenUsers:', err);
+    console.error('Error in getMessagesByContactId:', err);
     throw err;
   }
 }
-
-async function deleteContactBetweenUsers(userId1, userId2) {
+/*async function deleteContactBetweenUsers(userId1, userId2) {
   try {
     const { rowCount } = await db.query(
       `DELETE FROM contacts 
@@ -165,57 +150,34 @@ async function deleteContactBetweenUsers(userId1, userId2) {
       error: err.message
     };
   }
-}
+}*/
 
-async function createPendingContact(userId1, userId2) {
+async function createPendingContact(senderId, receiverId) {
   try {
-    // Ordering UUIDs lexically to satisfy user_low < user_high constraint
-    const isSenderLow = String(userId1) < String(userId2);
-    const userLow = isSenderLow ? userId1 : userId2;
-    const userHigh = isSenderLow ? userId2 : userId1;
+    const isSenderLow = String(senderId) < String(receiverId);
+    const userLow = isSenderLow ? senderId : receiverId;
+    const userHigh = isSenderLow ? receiverId : senderId;
 
     const query = `
       WITH inserted AS (
-        INSERT INTO contacts (
-          user_low, 
-          user_high, 
-          status, 
-          initiated_by, 
-          user_low_rank, 
-          user_high_rank, 
-          unread
-        )
-        VALUES (
-          $1::uuid, 
-          $2::uuid, 
-          'pending'::varchar, 
-          $3::uuid, 
-          0, 
-          0, 
-          0
-        )
+        INSERT INTO contacts (user_low, user_high, status, initiated_by)
+        VALUES ($1::uuid, $2::uuid, 'pending', $3::uuid)
         ON CONFLICT (user_low, user_high) DO NOTHING
-        RETURNING 
-          id AS contact_id, 
-          created_at AS contact_created_at, 
-          status, 
-          initiated_by,
-          unread,
-          user_low, 
-          user_high, 
-          user_low_rank, 
-          user_high_rank
+        RETURNING *
       )
       SELECT 
-        i.contact_id,
+        i.id AS contact_id,
         i.status,
         i.initiated_by,
-        i.unread,
-        i.contact_created_at,
-        CASE 
-          WHEN i.user_low = $3::uuid THEN i.user_low_rank 
-          ELSE i.user_high_rank 
-        END AS rank,
+        i.created_at AS contact_created_at,
+
+        -- Unseen count for sender ($3)
+        CASE WHEN i.user_low = $3::uuid THEN i.user_low_unseen ELSE i.user_high_unseen END AS unseen,
+
+        -- Rank for sender ($3)
+        CASE WHEN i.user_low = $3::uuid THEN i.user_low_rank ELSE i.user_high_rank END AS rank,
+
+        -- Receiver's profile ($4)
         jsonb_build_object(
           'id', u.id,
           'name', u.name,
@@ -226,19 +188,110 @@ async function createPendingContact(userId1, userId2) {
       JOIN users u ON u.id = $4::uuid;
     `;
 
-    const { rows } = await db.query(query, [userLow, userHigh, userId1, userId2]);
-    return rows[0] || null;
+    const { rows } = await db.query(query, [userLow, userHigh, senderId, receiverId]);
+
+    // Conflict triggered -> ON CONFLICT DO NOTHING produced 0 rows -> exit immediately
+    if (!rows || rows.length === 0) {
+      return { success: false, message: 'Contact already exists.' };
+    }
+
+    return { success: true, data: rows[0] };
   } catch (err) {
     console.error('Error in createPendingContact:', err);
+    throw err;
+  }
+}
+
+async function acceptContact(currentUserId, targetUserId) {
+  try {
+    // 1. Sort UUIDs for the target contact row
+    const isUser1Low = String(currentUserId) < String(targetUserId);
+    const userLow = isUser1Low ? currentUserId : targetUserId;
+    const userHigh = isUser1Low ? targetUserId : currentUserId;
+
+    const query = `
+      WITH shift_ranks AS (
+        -- Shift existing accepted contacts down by +1 for both users
+        UPDATE contacts
+        SET 
+          user_low_rank = CASE 
+            WHEN user_low = $1::uuid OR user_low = $2::uuid THEN user_low_rank + 1 
+            ELSE user_low_rank 
+          END,
+          user_high_rank = CASE 
+            WHEN user_high = $1::uuid OR user_high = $2::uuid THEN user_high_rank + 1 
+            ELSE user_high_rank 
+          END
+        WHERE (user_low IN ($1::uuid, $2::uuid) OR user_high IN ($1::uuid, $2::uuid))
+          AND status = 'accepted'
+          AND NOT (user_low = $3::uuid AND user_high = $4::uuid)
+      ),
+      updated_contact AS (
+        -- Set the accepted request to status 'accepted' and rank 1 for both
+        UPDATE contacts
+        SET 
+          status = 'accepted',
+          user_low_rank = 1,
+          user_high_rank = 1,
+          user_low_unseen = 0,
+          user_high_unseen = 0
+        WHERE user_low = $3::uuid 
+          AND user_high = $4::uuid
+          AND status = 'pending'
+        RETURNING *
+      )
+      SELECT 
+        c.id AS contact_id,
+        c.status,
+        c.initiated_by,
+        c.created_at AS contact_created_at,
+
+        -- Return rank for current user ($1) -> always 1
+        CASE 
+          WHEN c.user_low = $1::uuid THEN c.user_low_rank 
+          ELSE c.user_high_rank 
+        END AS rank,
+
+        -- Return unseen for current user ($1) -> always 0
+        CASE 
+          WHEN c.user_low = $1::uuid THEN c.user_low_unseen 
+          ELSE c.user_high_unseen 
+        END AS unseen,
+
+        -- Attach target user's profile object ($2)
+        jsonb_build_object(
+          'id', u.id,
+          'name', u.name,
+          'email', u.email,
+          'avatar_url', u.avatar_url
+        ) AS contact
+      FROM updated_contact c
+      JOIN users u ON u.id = $2::uuid;
+    `;
+
+    const { rows } = await db.query(query, [
+      currentUserId, // $1
+      targetUserId,  // $2
+      userLow,       // $3
+      userHigh       // $4
+    ]);
+
+    if (rows.length === 0) {
+      return { success: false, message: 'Pending contact request not found' };
+    }
+
+    return { success: true, contact: rows[0] };
+  } catch (err) {
+    console.error('Error in acceptContact:', err);
     throw err;
   }
 }
 module.exports = {
   createPendingContact,
   fetchAllContacts,
-  getMessagesBetweenUsers,
+  getMessagesByContactId,
   getUserById,
-  deleteMessagesBetweenUsers,
-  removeContactTransaction,
-  deleteContactBetweenUsers,
+  deleteMessagesByContactId,
+  removeContact,
+  acceptContact,
 };

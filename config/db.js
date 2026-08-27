@@ -35,11 +35,12 @@ const createTablesQuery = `
     initiated_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     
     -- Integer ranks maintained per user in the pair (1 = Top position)
-    user_low_rank INT DEFAULT 1,
-    user_high_rank INT DEFAULT 1,
+    user_low_rank INT DEFAULT 0,
+    user_high_rank INT DEFAULT 0,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-unread INT DEFAULT 0,
+user_low_unseen INT DEFAULT 0,
+    user_high_unseen INT DEFAULT 0,
 
     -- Ensures pair is unique and user_low is strictly smaller than user_high
     CONSTRAINT unique_user_pair UNIQUE (user_low, user_high),
@@ -47,28 +48,47 @@ unread INT DEFAULT 0,
     CONSTRAINT check_user_order CHECK (user_low < user_high)
   );
 
-  -- Ensure reqsentby column exists if table was created previously without it
-  ALTER TABLE contacts ADD COLUMN IF NOT EXISTS reqsentby VARCHAR(20);
-
   -- 3. Create B-Tree Indexes for sub-millisecond rank-based searches & pagination
   CREATE INDEX IF NOT EXISTS idx_contacts_low ON contacts(user_low);
   CREATE INDEX IF NOT EXISTS idx_contacts_high ON contacts(user_high);
   CREATE INDEX IF NOT EXISTS idx_contacts_low_rank ON contacts(user_low, user_low_rank ASC);
   CREATE INDEX IF NOT EXISTS idx_contacts_high_rank ON contacts(user_high, user_high_rank ASC);
 
-  -- 4. Create Messages Table
-  CREATE TABLE IF NOT EXISTS messages (
+-- 1. Create Messages Table
+CREATE TABLE IF NOT EXISTS messages (
     id BIGSERIAL PRIMARY KEY,
+    contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
     sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
-    status VARCHAR(20) DEFAULT 'sent',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-  );
+);
 
-  CREATE INDEX IF NOT EXISTS idx_messages_conversation 
-  ON messages(sender_id, receiver_id, created_at DESC);
-`;
+-- 2. Index to optimize querying and deleting per contact_id
+CREATE INDEX IF NOT EXISTS idx_messages_contact_created 
+ON messages(contact_id, created_at DESC);
+
+-- 3. Trigger Function: Deletes messages past the 10th newest per contact_id
+CREATE OR REPLACE FUNCTION cap_contact_messages()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM messages
+  WHERE contact_id = NEW.contact_id
+    AND id NOT IN (
+      SELECT id FROM messages
+      WHERE contact_id = NEW.contact_id
+      ORDER BY created_at DESC, id DESC
+      LIMIT 10
+    );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 4. Attach Trigger
+CREATE OR REPLACE TRIGGER enforce_10_message_limit
+AFTER INSERT ON messages
+FOR EACH ROW
+EXECUTE FUNCTION cap_contact_messages();`;
 
 const initDb = async () => {
   try {
