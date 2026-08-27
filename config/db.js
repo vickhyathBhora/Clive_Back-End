@@ -1,15 +1,24 @@
+JavaScript
 const { Pool } = require('pg');
 require('dotenv').config();
 
 const pool = new Pool({
+  // Use connection string directly if provided (Render/Cloud standard)
+  connectionString: process.env.DATABASE_URL,
+  
+  // Fallback to individual variables if DATABASE_URL isn't set
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'clive_db',
+  
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
+
+  // Enable SSL automatically for cloud hosts (like Render/Neon/Heroku)
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
 // Auto-create 'users', 'contacts', and 'messages' tables on startup
