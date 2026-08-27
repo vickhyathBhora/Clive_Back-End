@@ -93,7 +93,7 @@ ORDER BY (
 ) DESC;
     `;
 
-    const { rows } = await db.query(offlineUnseenQuery, [userId]);
+    const { rows } = await db.query(offlineUnseenQuery, [String(userId)]);
 console.log(rows);
     return res.status(200).json({
       success: true,
