@@ -14,7 +14,7 @@ const pool = new Pool({
   
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis:30000,
 
   // Enable SSL automatically for cloud hosts (like Render/Neon/Heroku)
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false

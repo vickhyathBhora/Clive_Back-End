@@ -1,7 +1,7 @@
 const os = require('os');
 const { connectedUsers } = require('../sockets/connectedUsers');
 
-const MAX_CONNECTIONS = 100; // Hard cap for this node
+const MAX_CONNECTIONS = process.env.MAX_CONNECTIONS;// Hard cap for this node
 const NEXT_SERVER_URL = process.env.NEXT_SERVER_URL || 'http://localhost:5001';
 
 /**
