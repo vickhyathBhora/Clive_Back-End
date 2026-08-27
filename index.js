@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -9,31 +10,45 @@ const contacts = require('./routes/contacts');
 const registerSocketHandlers = require('./sockets/socketHandler');
 const { createClient } = require('redis');
 const { createAdapter } = require('@socket.io/redis-adapter');
-
 const { connectPresence } = require('./presence');
-const REDIS_URL = process.env.REDIS_URL ;
-const app = express();
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5010';
 
-// Middleware
+const REDIS_URL = process.env.REDIS_URL;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+const app = express();
+
+const allowedOrigins = [
+  FRONTEND_URL.replace(/\/$/, ''),
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+// Express CORS Configuration
 app.use(
   cors({
-    origin: [FRONTEND_URL, 'http://localhost:3000'],
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Blocked by CORS policy'));
+      }
+    },
     credentials: true,
   })
 );
+
+app.options('*', cors());
 app.use(express.json());
 
 // API Routes
-
 app.use('/api/auth', authRoutes);
-app.use('/api/contacts',contacts);
+app.use('/api/contacts', contacts);
 
 // HTTP & Socket Server Setup
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: [FRONTEND_URL, 'http://localhost:3000'],
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -44,10 +59,8 @@ registerSocketHandlers(io);
 
 const startServer = async () => {
   try {
-    // 1. Connect Redis Presence Client
     await connectPresence();
 
-    // 2. Setup Redis Pub/Sub Adapter for Socket.io
     const pubClient = createClient({ url: REDIS_URL });
     const subClient = pubClient.duplicate();
 
@@ -58,11 +71,10 @@ const startServer = async () => {
     io.adapter(createAdapter(pubClient, subClient));
     console.log('⚡ Socket.io Redis Adapter Attached Successfully!');
 
-    // 3. Listen on HTTP Port
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`CORS allowed for frontend at ${FRONTEND_URL}`);
+      console.log(`CORS allowed origins:`, allowedOrigins);
     });
   } catch (err) {
     console.error('❌ Server startup failed:', err);

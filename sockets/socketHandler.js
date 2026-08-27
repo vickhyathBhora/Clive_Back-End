@@ -57,7 +57,6 @@ module.exports = function registerSocketHandlers(io) {
         process.env.JWT_SECRET || 'YOUR_JWT_SECRET'
       );
 
-      // Save decoded object and resolve standard user ID key
       socket.user = decoded;
       socket.userId = decoded.id || decoded.userId;
 
@@ -76,6 +75,7 @@ module.exports = function registerSocketHandlers(io) {
       return next(new Error('AUTH_ERROR: Invalid token'));
     }
   });
+
 
   // 2. CONNECTION HANDLER
   io.on('connection', async (socket) => {
