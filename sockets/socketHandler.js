@@ -78,10 +78,11 @@ module.exports = function registerSocketHandlers(io) {
     console.log(`⚡ User ${currentUserId} joined private room: ${currentUserId}`);
     console.log(`⚡ Socket Connected: ${socket.id} | User ID: ${socket.userId}`);
 
-    addConnectedUser(currentUserId, socket.id);
-    console.log(`⚡ Socket Connected: ${socket.id} | User ID: ${currentUserId}`);
 
     try {
+          addConnectedUser(currentUserId, socket.id);
+    console.log(`⚡ Socket Connected: ${socket.id} | User ID: ${currentUserId}`);
+
       await addUserRadis(currentUserId, socket.id, SERVER_ID);
       console.log(`⚡ Redis Presence Updated | User: ${currentUserId} registered to ${SERVER_ID}`);
     } catch (err) {
