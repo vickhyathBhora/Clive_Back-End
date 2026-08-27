@@ -30,13 +30,7 @@ const { addUserRadis,
 const SERVER_ID = process.env.SERVER_ID || 'server_1';
 
 // Configure Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail', // or your SMTP provider configuration
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+
 
 module.exports = function registerSocketHandlers(io) {
   // 1. AUTHENTICATION MIDDLEWARE
