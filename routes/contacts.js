@@ -37,8 +37,10 @@ const authenticateToken = (req, res, next) => {
 
 router.get('/search', authenticateToken, async (req, res) => {
   try {
-    const searchQuery = req.query.query || '';
-
+const searchQuery = req.query.query || '';
+    
+    // 1. Get currentUserId directly from req.user
+    const currentUserId = req.user.id;
     // If query is empty, return an empty array immediately
     if (!searchQuery.trim()) {
       return res.status(200).json({ users: [] });
