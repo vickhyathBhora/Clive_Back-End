@@ -16,7 +16,7 @@ function applySocketThrottling(socket) {
 
     if (eventTimestamps.length > MAX_EVENTS_PER_SEC) {
       console.warn(`⚠️ Socket [${socket.id}] exceeded 18 events/sec limit! Delaying processing...`);
-      
+
       // Delay event execution by 1.5 seconds instead of dropping
       setTimeout(() => {
         next();

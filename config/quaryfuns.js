@@ -6,7 +6,7 @@ const db = require('../config/db');
  * Fetch messages on demand when a user clicks on a contact.
  */
 async function fetchAllContacts(userId) {
- const query = `SELECT 
+  const query = `SELECT 
   c.id AS contact_id,
   c.status,
   c.initiated_by,
@@ -83,9 +83,9 @@ async function deleteMessagesByContactId(contactId) {
       [contactId]
     );
 
-    return { 
-      success: true, 
-      deletedCount: result.rowCount 
+    return {
+      success: true,
+      deletedCount: result.rowCount
     };
   } catch (error) {
     console.error('Error deleting messages:', error);
@@ -102,8 +102,8 @@ async function removeContact(contactId) {
       [contactId]
     );
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: result.rows[0],
     };
   } catch (err) {

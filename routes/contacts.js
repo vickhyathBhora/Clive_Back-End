@@ -44,18 +44,17 @@ router.get('/search', authenticateToken, async (req, res) => {
       return res.status(200).json({ users: [] });
     }
 
-    // Format query for wildcards: '%vic%'
     const searchPattern = `%${searchQuery.trim().toLowerCase()}%`;
 
-    // SQL Query to search by name or email
+    // SQL Query to search users matching pattern EXCEPT current user
     const sql = `
       SELECT id, name, email, avatar_url, created_at
       FROM users
-      WHERE (LOWER(name) LIKE LOWER($1) OR LOWER(email) LIKE LOWER($1));
+      WHERE (LOWER(name) LIKE LOWER($1) OR LOWER(email) LIKE LOWER($1))
+        AND id <> $2::uuid;
     `;
 
-    const { rows } = await db.query(sql, [searchPattern]);
-
+    const { rows } = await db.query(sql, [searchPattern, String(currentUserId)]);
     // Send back all matched user details
     return res.status(200).json({ users: rows });
   } catch (error) {
@@ -65,20 +64,16 @@ router.get('/search', authenticateToken, async (req, res) => {
 });
 
 router.get('/offline_unseen', authenticateToken, async (req, res) => {
-  console.log('--- 🚀 [GET /offline_unseen] Route Triggered ---');
-  
+
   try {
     // 1. Log req.user payload received from authenticateToken middleware
-    console.log('📌 [DEBUG] req.user:', req.user);
 
     const userId = req.user?.id || req.user?.userId;
-    console.log('📌 [DEBUG] Extracted userId:', userId);
 
     if (!userId) {
-      console.warn('⚠️ [WARN] User ID missing in token payload');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User ID missing in token payload' 
+      return res.status(400).json({
+        success: false,
+        message: 'User ID missing in token payload'
       });
     }
 
@@ -101,13 +96,10 @@ router.get('/offline_unseen', authenticateToken, async (req, res) => {
       ) DESC;
     `;
 
-    console.log('📌 [DEBUG] Executing Database Query with param:', String(userId));
 
     // 3. Execute DB Query
     const { rows } = await db.query(offlineUnseenQuery, [String(userId)]);
 
-    console.log('✅ [SUCCESS] Query executed successfully. Total rows returned:', rows.length);
-    console.log('📌 [DEBUG] Rows output:', JSON.stringify(rows, null, 2));
 
     return res.status(200).json({
       success: true,
@@ -115,15 +107,9 @@ router.get('/offline_unseen', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    // 4. Log detailed error metrics in Render logs
-    console.error('❌ [CRITICAL ERROR] /offline_unseen execution failed:');
-    console.error('   ├── Error Name:', error.name);
-    console.error('   ├── Error Message:', error.message);
-    console.error('   ├── PostgreSQL Error Code:', error.code || 'N/A');
-    console.error('   └── Stack Trace:\n', error.stack);
 
-    return res.status(500).json({ 
-      success: false, 
+    return res.status(500).json({
+      success: false,
       message: 'Server error',
       debug_error: error.message // Temporarily exposed for quick frontend debugging
     });
