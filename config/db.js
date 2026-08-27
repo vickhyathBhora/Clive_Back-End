@@ -33,8 +33,7 @@ const createTablesQuery = `
     avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
   );
-
-  -- 2. Create Contacts Table referencing user IDs with integer rank columns
+-- 1. Base Table Creation
   CREATE TABLE IF NOT EXISTS contacts (
     id BIGSERIAL PRIMARY KEY,
     user_low UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -42,21 +41,26 @@ const createTablesQuery = `
     status VARCHAR(20) DEFAULT 'pending',
     initiated_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     
-    -- Integer ranks maintained per user in the pair (1 = Top position)
     user_low_rank INT DEFAULT 0,
     user_high_rank INT DEFAULT 0,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-user_low_unseen INT DEFAULT 0,
+    user_low_unseen INT DEFAULT 0,
     user_high_unseen INT DEFAULT 0,
+    user_low_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    user_high_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    -- Ensures pair is unique and user_low is strictly smaller than user_high
     CONSTRAINT unique_user_pair UNIQUE (user_low, user_high),
     CONSTRAINT check_not_self CHECK (user_low <> user_high),
     CONSTRAINT check_user_order CHECK (user_low < user_high)
   );
 
-  -- 3. Create B-Tree Indexes for sub-millisecond rank-based searches & pagination
+  -- 2. Ensure existing tables get updated safely
+  ALTER TABLE contacts 
+    ADD COLUMN IF NOT EXISTS user_low_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS user_high_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+  -- 3. B-Tree Indexes
   CREATE INDEX IF NOT EXISTS idx_contacts_low ON contacts(user_low);
   CREATE INDEX IF NOT EXISTS idx_contacts_high ON contacts(user_high);
   CREATE INDEX IF NOT EXISTS idx_contacts_low_rank ON contacts(user_low, user_low_rank ASC);
