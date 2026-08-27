@@ -1,23 +1,23 @@
 const { Pool } = require('pg');
-require('dotenv').config();
+
+// Check if DATABASE_URL exists to prevent crash
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL environment variable is missing!');
+}
 
 const pool = new Pool({
-  // Use connection string directly if provided (Render/Cloud standard)
+  // Use connection string directly (External PostgreSQL URL from Render/Neon/Supabase)
   connectionString: process.env.DATABASE_URL,
 
-  // Fallback to individual variables if DATABASE_URL isn't set
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'clive_db',
+  // Lower limits specifically for Vercel Serverless environment
+  max: 1, // Only 1 connection per serverless function instance to avoid exhausting DB connections
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000,
 
-  max: 3,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 30000,
-
-  // Enable SSL automatically for cloud hosts (like Render/Neon/Heroku)
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  // SSL is required for all cloud-hosted PostgreSQL databases
+  ssl: process.env.DATABASE_URL
+    ? { rejectUnauthorized: false }
+    : false
 });
 
 // Auto-create 'users', 'contacts', and 'messages' tables on startup

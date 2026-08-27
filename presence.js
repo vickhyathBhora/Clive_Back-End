@@ -1,16 +1,25 @@
 const { createClient } = require('redis');
 
-// Initialize Redis Client
+// Initialize Redis Client safely for Upstash Cloud TLS
 const redisClient = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379',
+  url: process.env.REDIS_URL,
+  socket: {
+    tls: true,
+    rejectUnauthorized: false
+  }
 });
 
 redisClient.on('error', (err) => console.error('❌ Redis Presence Error:', err));
 
 /**
- * Connects to Redis (Call this during server boot in server.js)
+ * Connects to Redis (Call this during server boot or before execution)
  */
 async function connectPresence() {
+  if (!process.env.REDIS_URL) {
+    console.error('❌ REDIS_URL environment variable is missing in Vercel settings!');
+    return;
+  }
+
   if (!redisClient.isOpen) {
     await redisClient.connect();
     console.log('⚡ Redis Presence Manager Connected');
@@ -23,6 +32,7 @@ async function connectPresence() {
  */
 async function addUserRadis(userId, socketId, serverId, selectedId = null) {
   if (!userId) return;
+  await connectPresence(); // Ensure connected before query
   const key = `user:${userId}:presence`;
 
   await redisClient.hSet(key, {
@@ -34,6 +44,7 @@ async function addUserRadis(userId, socketId, serverId, selectedId = null) {
 
 async function updateUserSelectedChat(userId, selectedId = null) {
   if (!userId) return;
+  await connectPresence();
   const key = `user:${userId}:presence`;
 
   await redisClient.hSet(key, 'selectedId', selectedId ? String(selectedId) : '');
@@ -44,16 +55,18 @@ async function updateUserSelectedChat(userId, selectedId = null) {
  */
 async function removeUserRadis(userId) {
   if (!userId) return;
+  await connectPresence();
   const key = `user:${userId}:presence`;
   await redisClient.del(key);
 }
 
 /**
- * Fetches user metadata from Redis ($O(1) Hash Get).
+ * Fetches user metadata from Redis ($O(1)$ Hash Get).
  * Returns null if key does not exist (User Offline).
  */
 async function getUserRadis(userId) {
   if (!userId) return null;
+  await connectPresence();
   const key = `user:${userId}:presence`;
   const data = await redisClient.hGetAll(key);
 
