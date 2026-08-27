@@ -104,8 +104,6 @@ const corsOptions = {
 // 1. Strict CORS Middleware
 app.use(cors(corsOptions));
 
-// 2. Preflight FIX: Avoid bare app.options('*') to prevent Express 5 path-to-regexp crash
-app.options('/{*path}', cors(corsOptions));
 
 app.use(express.json());
 
