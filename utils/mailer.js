@@ -1,11 +1,14 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
+// Strip out any accidental whitespaces in app password
+const cleanEmailPass = (process.env.EMAIL_PASS || '').replace(/\s+/g, '');
+
 const transporter = nodemailer.createTransport({
   service: process.env.EMAIL_SERVICE || 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: cleanEmailPass,
   },
 });
 
@@ -31,4 +34,4 @@ async function sendOtpEmail(toEmail, otp) {
   return await transporter.sendMail(mailOptions);
 }
 
-module.exports = { sendOtpEmail };
+module.exports = { transporter, sendOtpEmail };

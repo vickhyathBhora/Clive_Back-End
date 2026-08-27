@@ -307,59 +307,55 @@ module.exports = function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('send_invite_new_user', async (data) => {
-      try {
-        const senderName = data?.user || 'A user';
-        const targetUserMail = data?.targetUserMail;
-        const clientAppUrl = process.env.FRONTEND_URL;
+socket.on('send_invite_new_user', async (data) => {
+  console.log('📩 Received send_invite_new_user payload:', data);
 
-        if (!targetUserMail) {
-          return socket.emit('send_invite_new_user_res', {
-            success: false,
-            message: 'Email address is required',
-          });
-        }
+  try {
+    const senderName = data?.user || 'A user';
+    const targetUserMail = data?.targetUserMail?.trim();
+    const clientAppUrl = process.env.FRONTEND_URL || 'https://chatlive-1595.netlify.app';
 
-        const mailOptions = {
-          from: process.env.EMAIL_USER,
-          to: targetUserMail,
-          text: `Hello,\n\n${senderName} has invited you to connect on ChatLive:\n${clientAppUrl}`,
-          html: `
-    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-      <h2 style="color: #333;">Join ChatLive</h2>
-      <p style="color: #555;">Hello,</p>
-      <p style="color: #555;"><strong>${senderName}</strong> invited you to connect on ChatLive.</p>
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${clientAppUrl}" style="background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Join & Connect</a>
-      </div>
-      <p style="color: #888; font-size: 12px;">Best regards,<br/>ChatLive Team</p>
-    </div>
-  `};
+    if (!targetUserMail) {
+      return socket.emit('send_invite_new_user_res', {
+        success: false,
+        message: 'Email address is required',
+      });
+    }
 
-        try {
-          const emailResult = await transporter.sendMail(mailOptions);
-          console.log(`✉️ Email sent to: ${targetUserMail}`, emailResult.messageId);
+    const mailOptions = {
+      from: `"ChatLive Team" <${process.env.EMAIL_USER}>`, // Explicit sender format
+      to: targetUserMail,
+      subject: `${senderName} invited you to join ChatLive!`, // Added missing subject line!
+      text: `Hello,\n\n${senderName} has invited you to connect on ChatLive:\n${clientAppUrl}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+          <h2 style="color: #333;">Join ChatLive</h2>
+          <p style="color: #555;">Hello,</p>
+          <p style="color: #555;"><strong>${senderName}</strong> invited you to connect on ChatLive.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${clientAppUrl}" style="background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Join & Connect</a>
+          </div>
+          <p style="color: #888; font-size: 12px;">Best regards,<br/>ChatLive Team</p>
+        </div>
+      `
+    };
 
-          // Simple response on successful email dispatch
-          socket.emit('send_invite_new_user_res', {
-            success: true,
-            message: `Mail sent to ${targetUserMail}`,
-          });
-        } catch (emailErr) {
-          console.error('Failed to send email:', emailErr);
-          return socket.emit('send_invite_new_user_res', {
-            success: false,
-            message: 'Invalid or unreachable email address',
-          });
-        }
-      } catch (err) {
-        console.error('Error in send_invite_new_user:', err);
-        socket.emit('send_invite_new_user_res', {
-          success: false,
-          message: 'Server error while processing invitation',
-        });
-      }
+    const emailResult = await transporter.sendMail(mailOptions);
+    console.log(`✉️ Email successfully dispatched to: ${targetUserMail}`, emailResult.messageId);
+
+    socket.emit('send_invite_new_user_res', {
+      success: true,
+      message: `Mail sent to ${targetUserMail}`,
     });
+
+  } catch (err) {
+    console.error('❌ Detailed Email Error:', err.message, err.stack);
+    socket.emit('send_invite_new_user_res', {
+      success: false,
+      message: err.message || 'Failed to send email invite',
+    });
+  }
+});
     socket.on('accept_invite', async (data) => {
       try {
         const currentUserId = socket.userId;
