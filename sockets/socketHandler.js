@@ -335,7 +335,7 @@ module.exports = function registerSocketHandlers(io) {
 
           // Send result.contact directly as payload
           io.to(targetUserId).emit('accepted_your_invite', result.contact);
-          await sendAcceptanceEmail();
+         
 
         } else {
           // 2. REDIS CHECK (Friend is online on another server)
@@ -354,7 +354,7 @@ module.exports = function registerSocketHandlers(io) {
 
             // Send result.contact directly as payload
             io.to(targetUserId).emit('accepted_your_invite', result.contact);
-            await sendAcceptanceEmail();
+           
 
           } else {
             // 3. OFFLINE CHECK (Friend is offline everywhere)
@@ -388,7 +388,7 @@ module.exports = function registerSocketHandlers(io) {
 
             await db.query(query, [currentUserId, targetUserId]);
 
-            await sendAcceptanceEmail();
+           
           }
         }
       } catch (err) {
