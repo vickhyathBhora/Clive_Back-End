@@ -4,56 +4,64 @@ const db = require('../config/db');
 const jwt = require('jsonwebtoken');
 
 /**
- * Direct Google Login (No OTP required)
- * POST /api/google-auth
+ * Google Auth Endpoint
+ * POST /api/auth/google-auth
+ * Receives: { token: "ya29..." }
  */
 router.post('/google-auth', async (req, res) => {
-  const { email, name, avatarUrl } = req.body;
+  const { token } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ message: 'Email is required from Google account.' });
+  if (!token) {
+    return res.status(400).json({ message: 'Google access token is required.' });
   }
 
   try {
-    // 1. Check if user already exists
-    let userResult = await db.query(
+    // 1. Verify token & fetch user profile directly from Google
+    const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!googleRes.ok) {
+      return res.status(401).json({ message: 'Invalid or expired Google token.' });
+    }
+
+    const googleUser = await googleRes.json();
+    const { email, name, picture } = googleUser;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Could not retrieve email from Google.' });
+    }
+
+    const avatarUrl = picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(name || email)}&background=random&color=fff`;
+
+    // 2. Check if user already exists
+    let user;
+    const existingUser = await db.query(
       'SELECT id, email, name, avatar_url, created_at FROM users WHERE email = $1',
       [email]
     );
 
-    let user;
-
-    if (userResult.rows.length > 0) {
-    const updatedUser = await db.query(
-      `UPDATE users 
-       SET name = COALESCE(name, $1), 
-           avatar_url = COALESCE(avatar_url, $2)
-       WHERE email = $3 
-       RETURNING id, email, name, avatar_url, created_at;`,
-      [name, avatarUrl, email]
-    );
-    user = updatedUser.rows[0];
-    console.log(`👤 Updated shadow user profile for: ${email}`);
+    if (existingUser.rows.length > 0) {
+      user = existingUser.rows[0];
     } else {
-      // New User: Create entry with auto-generated UUID
-      const defaultName = name ||null;
+      // Create new user in PostgreSQL
       const newUser = await db.query(
         `INSERT INTO users (email, name, avatar_url) 
          VALUES ($1, $2, $3) 
          RETURNING id, email, name, avatar_url, created_at`,
-        [email, defaultName, avatarUrl]
+        [email, name || email.split('@')[0], avatarUrl]
       );
       user = newUser.rows[0];
     }
 
-    // 2. Generate Auth Token with ONLY user ID
+    // 3. Generate App Auth Token
     const jwtSecret = process.env.JWT_SECRET || 'your_fallback_jwt_secret';
-    const token = jwt.sign({ id: user.id }, jwtSecret, { expiresIn: '7d' });
+    const appToken = jwt.sign({ id: user.id }, jwtSecret, { expiresIn: '7d' });
 
-    // 3. Return response for Dashboard Context
+    // 4. Return successful login data
     return res.status(200).json({
       message: 'Authentication successful!',
-      token,
+      token: appToken,
       user: {
         id: user.id,
         email: user.email,
@@ -68,4 +76,5 @@ router.post('/google-auth', async (req, res) => {
     return res.status(500).json({ message: 'Internal server error during authentication.' });
   }
 });
+
 module.exports = router;
