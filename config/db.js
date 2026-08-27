@@ -1,25 +1,21 @@
 const { Pool } = require('pg');
 
-// Check if DATABASE_URL exists to prevent crash
 if (!process.env.DATABASE_URL) {
   console.error('❌ DATABASE_URL environment variable is missing!');
 }
 
 const pool = new Pool({
-  // Use connection string directly (External PostgreSQL URL from Render/Neon/Supabase)
   connectionString: process.env.DATABASE_URL,
 
-  // Lower limits specifically for Vercel Serverless environment
-  max: 1, // Only 1 connection per serverless function instance to avoid exhausting DB connections
-  idleTimeoutMillis: 10000,
-  connectionTimeoutMillis: 10000,
+  // Set back to 10 for Railway container hosting
+  max: 10, 
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 30000,
 
-  // SSL is required for all cloud-hosted PostgreSQL databases
   ssl: process.env.DATABASE_URL
     ? { rejectUnauthorized: false }
     : false
 });
-
 // Auto-create 'users', 'contacts', and 'messages' tables on startup
 const createTablesQuery = `
   -- Enable pgcrypto for UUID generator if using older PostgreSQL version
