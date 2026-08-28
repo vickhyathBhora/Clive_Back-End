@@ -293,7 +293,7 @@ module.exports = function registerSocketHandlers(io) {
 
         // 1. DB transaction: Shift ranks + update status to accepted
         const result = await acceptContact(currentUserId, targetUserId);
-
+console.log(result);
         if (!result.success || !result.contact) {
           return socket.emit('accept_invite_res', {
             success: false,
