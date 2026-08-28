@@ -160,8 +160,26 @@ async function createPendingContact(senderId, receiverId) {
 
     const query = `
       WITH inserted AS (
-        INSERT INTO contacts (user_low, user_high, status, initiated_by)
-        VALUES ($1::uuid, $2::uuid, 'pending', $3::uuid)
+        INSERT INTO contacts (
+          user_low, 
+          user_high, 
+          status, 
+          initiated_by, 
+          user_low_unseen, 
+          user_high_unseen, 
+          user_low_time, 
+          user_high_time
+        )
+        VALUES (
+          $1::uuid, 
+          $2::uuid, 
+          'pending', 
+          $3::uuid, 
+          0, 
+          0, 
+          NOW(), 
+          NOW()
+        )
         ON CONFLICT (user_low, user_high) DO NOTHING
         RETURNING *
       )
@@ -171,31 +189,54 @@ async function createPendingContact(senderId, receiverId) {
         i.initiated_by,
         i.created_at AS contact_created_at,
 
-        -- Unseen count for sender ($3)
-        CASE WHEN i.user_low = $3::uuid THEN i.user_low_unseen ELSE i.user_high_unseen END AS unseen,
+        -- Unseen count specific to target_user
+        CASE 
+          WHEN i.user_low = target_user.id THEN i.user_low_unseen 
+          ELSE i.user_high_unseen 
+        END AS unseen,
 
-        -- Rank for sender ($3)
-        CASE WHEN i.user_low = $3::uuid THEN i.user_low_rank ELSE i.user_high_rank END AS rank,
+        -- Rank specific to target_user
+        CASE 
+          WHEN i.user_low = target_user.id THEN i.user_low_rank 
+          ELSE i.user_high_rank 
+        END AS rank,
 
-        -- Receiver's profile ($4)
+        -- Profile of the OPPOSITE contact for this recipient
         jsonb_build_object(
-          'id', u.id,
-          'name', u.name,
-          'email', u.email,
-          'avatar_url', u.avatar_url
+          'id', partner_user.id,
+          'name', partner_user.name,
+          'email', partner_user.email,
+          'avatar_url', partner_user.avatar_url
         ) AS contact
+
       FROM inserted i
-      JOIN users u ON u.id = $4::uuid;
+      -- Match both involved users so we get exactly 2 rows
+      JOIN users target_user ON target_user.id IN (i.user_low, i.user_high)
+      -- Match the opposite user for the nested profile payload
+      JOIN users partner_user ON partner_user.id = CASE 
+        WHEN target_user.id = i.user_low THEN i.user_high 
+        ELSE i.user_low 
+      END
+      -- Guarantees rows[0] is Sender and rows[1] is Receiver
+      ORDER BY CASE WHEN target_user.id = $3::uuid THEN 0 ELSE 1 END;
     `;
 
-    const { rows } = await db.query(query, [userLow, userHigh, senderId, receiverId]);
+    // Execute query with only 3 params since $4 is no longer required in SQL
+    const { rows } = await db.query(query, [userLow, userHigh, senderId]);
 
     // Conflict triggered -> ON CONFLICT DO NOTHING produced 0 rows -> exit immediately
     if (!rows || rows.length === 0) {
       return { success: false, message: 'Contact already exists.' };
     }
 
-    return { success: true, data: rows[0] };
+    const senderData = rows[0];   // Index 0: Formatted for sender with receiver's profile
+    const receiverData = rows[1]; // Index 1: Formatted for receiver with sender's profile
+
+    return { 
+      success: true, 
+      senderData: senderData,       // Main data returned for API response to sender
+      receiverData: receiverData // Payload to emit via Socket.io / Push notification to receiver
+    };
   } catch (err) {
     console.error('Error in createPendingContact:', err);
     throw err;

@@ -240,7 +240,7 @@ module.exports = function registerSocketHandlers(io) {
         // 2. Emit success response back to the sender
         socket.emit('send_invite_res', {
           success: true,
-          contact: newContact,
+          contact: newContact.senderData,
         });
 
         // 1. Check Local Server (RAM)
@@ -250,7 +250,7 @@ module.exports = function registerSocketHandlers(io) {
           console.log(`⚡ Target user ${targetUserId} is online locally! Emitting live invite.`);
           io.to(targetUserId).emit('new_invite_received', {
             success: true,
-            contact: newContact,
+            contact: newContact.receiverData,
           });
         } else {
           // 2. Local check failed -> Check Redis (Server 2 / Server 3)
@@ -260,7 +260,7 @@ module.exports = function registerSocketHandlers(io) {
             console.log(`⚡ Target user ${targetUserId} is online on Redis node (${redisPresence.serverId})! Emitting live invite.`);
             io.to(targetUserId).emit('new_invite_received', {
               success: true,
-              contact: newContact,
+              contact: newContact.receiverData,
             });
           } else {
             console.log(`🌙 Target user ${targetUserId} is completely offline.`);
