@@ -6,53 +6,61 @@ const db = require('../config/db');
  * Fetch messages on demand when a user clicks on a contact.
  */
 async function fetchAllContacts(userId) {
-  const query = `SELECT 
-  c.id AS contact_id,
-  c.status,
-  c.initiated_by,
-  c.created_at AS contact_created_at,
-
-  -- Pick unseen count for your side
-  CASE 
-    WHEN c.user_low = $1 THEN c.user_low_unseen 
-    ELSE c.user_high_unseen 
-  END AS unseen,
-
-  -- Pick your rank depending on which side you sit on
-  CASE 
-    WHEN c.user_low = $1 THEN c.user_low_rank 
-    ELSE c.user_high_rank 
-  END AS rank,
-  
-  -- Package the friend's profile into a single JSON object
-  jsonb_build_object(
-    'id', u.id,
-    'name', u.name,
-    'email', u.email,
-    'avatar_url', u.avatar_url
-  ) AS contact
-
-FROM contacts c
-
--- Identify which ID belongs to your friend for each row
-CROSS JOIN LATERAL (
-  SELECT CASE 
-    WHEN c.user_low = $1 THEN c.user_high 
-    ELSE c.user_low 
-  END AS friend_id
-) f
-
--- Join the users table using that friend_id
-JOIN users u ON u.id = f.friend_id
-
-WHERE c.user_low = $1 OR c.user_high = $1
-ORDER BY rank ASC`;
-
   try {
+    const query = `
+      SELECT 
+        c.id AS contact_id,
+        c.status,
+        c.initiated_by,
+        c.created_at AS contact_created_at,
+
+        -- Pick unseen count for your side
+        CASE 
+          WHEN c.user_low = $1::uuid THEN c.user_low_unseen 
+          ELSE c.user_high_unseen 
+        END AS unseen,
+
+        -- Pick your rank depending on which side you sit on
+        CASE 
+          WHEN c.user_low = $1::uuid THEN c.user_low_rank 
+          ELSE c.user_high_rank 
+        END AS rank,
+
+        -- Pick your time depending on which side you sit on
+        CASE 
+          WHEN c.user_low = $1::uuid THEN c.user_low_time
+          ELSE c.user_high_time 
+        END AS time,
+
+        -- Package the friend's profile into a single JSON object
+        jsonb_build_object(
+          'id', u.id,
+          'name', u.name,
+          'email', u.email,
+          'avatar_url', u.avatar_url
+        ) AS contact
+
+      FROM contacts c
+
+      -- Identify which ID belongs to your friend for each row
+      CROSS JOIN LATERAL (
+        SELECT CASE 
+          WHEN c.user_low = $1::uuid THEN c.user_high 
+          ELSE c.user_low 
+        END AS friend_id
+      ) f
+
+      -- Join the users table using that friend_id
+      JOIN users u ON u.id = f.friend_id
+
+      WHERE c.user_low = $1::uuid OR c.user_high = $1::uuid
+      ORDER BY rank ASC NULLS LAST;
+    `;
+
     const { rows } = await db.query(query, [userId]);
     return rows;
   } catch (err) {
-    console.error('Error fetching all contacts:', err);
+    console.error('Error in fetchAllContacts:', err);
     throw err;
   }
 }
@@ -158,80 +166,79 @@ async function createPendingContact(senderId, receiverId) {
     const userLow = isSenderLow ? senderId : receiverId;
     const userHigh = isSenderLow ? receiverId : senderId;
 
-    const query = `
-      WITH inserted AS (
-        INSERT INTO contacts (
-          user_low, 
-          user_high, 
-          status, 
-          initiated_by, 
-          user_low_unseen, 
-          user_high_unseen, 
-          user_low_time, 
-          user_high_time
-        )
-        VALUES (
-          $1::uuid, 
-          $2::uuid, 
-          'pending', 
-          $3::uuid, 
-          0, 
-          0, 
-          NOW(), 
-          NOW()
-        )
-        ON CONFLICT (user_low, user_high) DO NOTHING
-        RETURNING *
-      )
-      SELECT 
-        i.id AS contact_id,
-        i.status,
-        i.initiated_by,
-        i.created_at AS contact_created_at,
+const query1 = `
+  INSERT INTO contacts (
+    user_low, 
+    user_high, 
+    status, 
+    initiated_by, 
+    user_low_unseen, 
+    user_high_unseen, 
+    user_low_time, 
+    user_high_time
+  )
+  VALUES (
+    $1::uuid, 
+    $2::uuid, 
+    'pending', 
+    $3::uuid, 
+    0, 
+    0, 
+    NOW(), 
+    NOW()
+  )
+  ON CONFLICT (user_low, user_high) DO NOTHING
+  RETURNING *;
+`;
 
-        -- Unseen count specific to target_user
-        CASE 
-          WHEN i.user_low = target_user.id THEN i.user_low_unseen 
-          ELSE i.user_high_unseen 
-        END AS unseen,
+const { rows:contact } = await db.query(query1, [userLow, userHigh, senderId]);
 
-        -- Rank specific to target_user
-        CASE 
-          WHEN i.user_low = target_user.id THEN i.user_low_rank 
-          ELSE i.user_high_rank 
-        END AS rank,
+const query2 = `
+  SELECT * 
+  FROM users 
+  WHERE id IN ($1::uuid, $2::uuid);
+`;
 
-        -- Profile of the OPPOSITE contact for this recipient
-        jsonb_build_object(
-          'id', partner_user.id,
-          'name', partner_user.name,
-          'email', partner_user.email,
-          'avatar_url', partner_user.avatar_url
-        ) AS contact
+const { rows: userProfiles } = await db.query(query2, [senderId, receiverId]);
+const senderUser = userProfiles.find(u => u.id === senderId);
+const receiverUser = userProfiles.find(u => u.id === receiverId);
 
-      FROM inserted i
-      -- Match both involved users so we get exactly 2 rows
-      JOIN users target_user ON target_user.id IN (i.user_low, i.user_high)
-      -- Match the opposite user for the nested profile payload
-      JOIN users partner_user ON partner_user.id = CASE 
-        WHEN target_user.id = i.user_low THEN i.user_high 
-        ELSE i.user_low 
-      END
-      -- Guarantees rows[0] is Sender and rows[1] is Receiver
-      ORDER BY CASE WHEN target_user.id = $3::uuid THEN 0 ELSE 1 END;
-    `;
+const results = usersToProcess.map(({ targetUser, partnerUser }) => {
+  // Determine if this user sits on the low side or high side
+  const isLow = contactRow.user_low === targetUser.id;
 
-    // Execute query with only 3 params since $4 is no longer required in SQL
-    const { rows } = await db.query(query, [userLow, userHigh, senderId]);
+  return {
+    contact_id: contactRow.id,
+    status: contactRow.status,
+    initiated_by: contactRow.initiated_by,
+    contact_created_at: contactRow.created_at,
+    
+    // Pick unseen, rank, and time dynamically based on user_low vs user_high
+    unseen: isLow ? contactRow.user_low_unseen : contactRow.user_high_unseen,
+    rank: isLow ? contactRow.user_low_rank : contactRow.user_high_rank,
+    time: isLow ? contactRow.user_low_time : contactRow.user_high_time,
+
+    // Attach the opposite user's profile
+    contact: {
+      id: partnerUser.id,
+      name: partnerUser.name,
+      email: partnerUser.email,
+      avatar_url: partnerUser.avatar_url
+    }
+  };
+});
+
+// Index 0: Sender Payload
+const senderData = results[0];
+
+// Index 1: Receiver Payload
+const receiverData = results[1];
+
 
     // Conflict triggered -> ON CONFLICT DO NOTHING produced 0 rows -> exit immediately
     if (!rows || rows.length === 0) {
       return { success: false, message: 'Contact already exists.' };
     }
-
-    const senderData = rows[0];   // Index 0: Formatted for sender with receiver's profile
-    const receiverData = rows[1]; // Index 1: Formatted for receiver with sender's profile
-
     return { 
       success: true, 
       senderData: senderData,       // Main data returned for API response to sender
