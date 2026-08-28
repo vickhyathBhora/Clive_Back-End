@@ -317,7 +317,7 @@ console.log(result);
         // 2. Emit success response BACK to the user who clicked Accept
         socket.emit('accept_invite_res', {
           success: true,
-          contact: result.contact_id,
+          contact_id: result.contact_id,
           message: 'Invite accepted successfully',
           type:'self'
         });
