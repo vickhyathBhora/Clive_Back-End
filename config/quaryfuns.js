@@ -211,15 +211,15 @@ const results = usersToProcess.map(({ targetUser, partnerUser }) => {
   const isLow = contact.user_low === targetUser.id;
 
   return {
-    contact_id: contactRow.id,
-    status: contactRow.status,
-    initiated_by: contactRow.initiated_by,
-    contact_created_at: contactRow.created_at,
+    contact_id: contact.id,
+    status: contact.status,
+    initiated_by: contact.initiated_by,
+    contact_created_at: contact.created_at,
     
     // Pick unseen, rank, and time dynamically based on user_low vs user_high
-    unseen: isLow ? contactRow.user_low_unseen : contactRow.user_high_unseen,
-    rank: isLow ? contactRow.user_low_rank : contactRow.user_high_rank,
-    time: isLow ? contactRow.user_low_time : contactRow.user_high_time,
+    unseen: isLow ? contact.user_low_unseen : contact.user_high_unseen,
+    rank: isLow ? contact.user_low_rank : contact.user_high_rank,
+    time: isLow ? contact.user_low_time : contact.user_high_time,
 
     // Attach the opposite user's profile
     contact: {
