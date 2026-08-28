@@ -318,6 +318,7 @@ console.log(result);
           success: true,
           contact: result.contact_id,
           message: 'Invite accepted successfully',
+          type:'self'
         });
 
 
@@ -333,7 +334,9 @@ console.log(result);
           console.log('--------------------------------------------------');
 
           // Send result.contact directly as payload
-          io.to(targetUserId).emit('accepted_your_invite', result.contact_id);
+        io.to(targetUserId).emit('accepted_your_invite', {
+  contact_id: result.contact_id,
+  type: 'new'});
          
 
         } else {
@@ -351,9 +354,9 @@ console.log(result);
             console.log('⚡ Emitting cross-server accepted_your_invite via Redis...');
             console.log('--------------------------------------------------');
 
-            // Send result.contact directly as payload
-            io.to(targetUserId).emit('accepted_your_invite', result.contact_id);
-           
+          io.to(targetUserId).emit('accepted_your_invite', {
+  contact_id: result.contact_id,
+  type: 'new'});
 
           } else {
             // 3. OFFLINE CHECK (Friend is offline everywhere)
