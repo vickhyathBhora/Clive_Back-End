@@ -225,6 +225,7 @@ async function acceptContact(currentUserId, targetUserId) {
         WHERE (user_low IN ($1::uuid, $2::uuid) OR user_high IN ($1::uuid, $2::uuid))
           AND status = 'accepted'
           AND NOT (user_low = $3::uuid AND user_high = $4::uuid)
+        RETURNING id
       ),
       updated_contact AS (
         -- Set the accepted request to status 'accepted' and rank 1 for both
@@ -238,6 +239,8 @@ async function acceptContact(currentUserId, targetUserId) {
         WHERE user_low = $3::uuid 
           AND user_high = $4::uuid
           AND status = 'pending'
+          -- FORCES execution order: wait for shift_ranks to complete
+          AND (SELECT count(*) FROM shift_ranks) >= 0
         RETURNING *
       )
       SELECT 
@@ -246,19 +249,16 @@ async function acceptContact(currentUserId, targetUserId) {
         c.initiated_by,
         c.created_at AS contact_created_at,
 
-        -- Return rank for current user ($1) -> always 1
         CASE 
           WHEN c.user_low = $1::uuid THEN c.user_low_rank 
           ELSE c.user_high_rank 
         END AS rank,
 
-        -- Return unseen for current user ($1) -> always 0
         CASE 
           WHEN c.user_low = $1::uuid THEN c.user_low_unseen 
           ELSE c.user_high_unseen 
         END AS unseen,
 
-        -- Attach target user's profile object ($2)
         jsonb_build_object(
           'id', u.id,
           'name', u.name,
