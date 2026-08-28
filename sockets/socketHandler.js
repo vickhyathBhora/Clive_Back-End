@@ -307,7 +307,7 @@ await db.query(updateRankQuery, [targetUserId, newContact.senderData.contact_id]
         // 1. DB transaction: Shift ranks + update status to accepted
         const result = await acceptContact(currentUserId, targetUserId);
 console.log(result);
-        if (!result.success || !result.contact) {
+        if (!result.success || !result.contact_id) {
           return socket.emit('accept_invite_res', {
             success: false,
             message: result.message || 'Pending contact request not found',
