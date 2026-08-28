@@ -67,7 +67,7 @@ if (offlineContactIds.length > 0) {
     SET 
       user_low_rank = CASE WHEN user_low = $1::uuid AND user_low_rank = -1 THEN 0 ELSE user_low_rank END,
       user_high_rank = CASE WHEN user_high = $1::uuid AND user_high_rank = -1 THEN 0 ELSE user_high_rank END
-    WHERE id = $2::uuid;
+    WHERE id = $2::bigint;
   `;
 
   for (const contactId of offlineContactIds) {
