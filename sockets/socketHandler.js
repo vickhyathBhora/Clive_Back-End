@@ -236,7 +236,7 @@ module.exports = function registerSocketHandlers(io) {
 
         // 1. Save pending contact in PostgreSQL
         const newContact = await createPendingContact(currentUserId, targetUserId);
-
+console.log(newContact);
         // 2. Emit success response back to the sender
         socket.emit('send_invite_res', {
           success: true,
