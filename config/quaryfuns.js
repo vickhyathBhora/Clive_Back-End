@@ -314,7 +314,7 @@ updated_contact AS (
 SELECT id FROM updated_contact;
     `;
 
-  const { rows } = await db.query(query, [userId1, userId2, userLow, userHigh]);
+  const { rows } = await db.query(query, [currentUserId, targetUserId, userLow, userHigh]);
 const updatedContactId = rows[0]?.id;
 
     if (rows.length === 0) {
