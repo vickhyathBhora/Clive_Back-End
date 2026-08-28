@@ -154,27 +154,6 @@ async function getMessagesByContactId(contactId, limit = 10) {
     throw err;
   }
 }
-/*async function deleteContactBetweenUsers(userId1, userId2) {
-  try {
-    const { rowCount } = await db.query(
-      `DELETE FROM contacts 
-       WHERE user_low = LEAST($1::uuid, $2::uuid) 
-         AND user_high = GREATEST($1::uuid, $2::uuid);`,
-      [userId1, userId2]
-    );
-
-    return {
-      success: true,
-      deleted: rowCount > 0
-    };
-  } catch (err) {
-    console.error('Error in deleteContactBetweenUsers:', err);
-    return {
-      success: false,
-      error: err.message
-    };
-  }
-}*/
 
 async function createPendingContact(senderId, receiverId) {
   try {
