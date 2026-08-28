@@ -400,7 +400,7 @@ module.exports = function registerSocketHandlers(io) {
 
     socket.on('reject_invite', async (data) => {
       try {
-        console.log('Reject invite payload received:', data);
+         console.log('Reject invite payload received:', data);
 
         const currentUserId = socket.userId;
         const contactId = data?.contactId;
