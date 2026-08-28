@@ -182,7 +182,7 @@ async function createPendingContact(senderId, receiverId) {
     const userLow = isSenderLow ? senderId : receiverId;
     const userHigh = isSenderLow ? receiverId : senderId;
 
-    const query1 = `
+    const queryone = `
       INSERT INTO contacts (
         user_low, 
         user_high, 
@@ -207,7 +207,7 @@ async function createPendingContact(senderId, receiverId) {
       RETURNING *;
     `;
 
-    const { rows: contactRows } = await db.query(query1, [userLow, userHigh, senderId]);
+    const { rows: contactRows } = await db.query(queryone, [userLow, userHigh, senderId]);
 
     // Check if a row was inserted (conflict would produce 0 rows)
     if (!contactRows || contactRows.length === 0) {
@@ -217,13 +217,13 @@ async function createPendingContact(senderId, receiverId) {
     const insertedContact = contactRows[0]; // Extracted single contact row
 
     // Fetch user profiles only because contact row was successfully inserted
-    const query2 = `
+    const querytwo= `
       SELECT id, name, email, avatar_url 
       FROM users 
       WHERE id IN ($1::uuid, $2::uuid);
     `;
 
-    const { rows: userProfiles } = await db.query(query2, [senderId, receiverId]);
+    const { rows: userProfiles } = await db.query(querytwo, [senderId, receiverId]);
 
     const senderUser = userProfiles.find(u => u.id === senderId);
     const receiverUser = userProfiles.find(u => u.id === receiverId);
