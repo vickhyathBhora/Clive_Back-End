@@ -221,7 +221,7 @@ module.exports = function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('send_invite', async (targetUserId, targetUserMail) => {
+    socket.on('send_invite', async (targetUserId) => {
       try {
         const currentUserId = socket.userId;
 
@@ -264,6 +264,15 @@ console.log(newContact);
             });
           } else {
             console.log(`🌙 Target user ${targetUserId} is completely offline.`);
+         const updateRankQuery = `
+  UPDATE contacts 
+  SET 
+    user_low_rank = CASE WHEN user_low = $1::uuid THEN -1 ELSE user_low_rank END,
+    user_high_rank = CASE WHEN user_high = $1::uuid THEN -1 ELSE user_high_rank END
+  WHERE id = $2::bigint;
+`;
+
+await db.query(updateRankQuery, [targetUserId, newContact.senderData.contact_id]);
           }
         }
 
