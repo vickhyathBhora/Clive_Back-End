@@ -166,87 +166,88 @@ async function createPendingContact(senderId, receiverId) {
     const userLow = isSenderLow ? senderId : receiverId;
     const userHigh = isSenderLow ? receiverId : senderId;
 
-const query1 = `
-  INSERT INTO contacts (
-    user_low, 
-    user_high, 
-    status, 
-    initiated_by, 
-    user_low_unseen, 
-    user_high_unseen, 
-    user_low_time, 
-    user_high_time
-  )
-  VALUES (
-    $1::uuid, 
-    $2::uuid, 
-    'pending', 
-    $3::uuid, 
-    0, 
-    0, 
-    NOW(), 
-    NOW()
-  )
-  ON CONFLICT (user_low, user_high) DO NOTHING
-  RETURNING *;
-`;
+    const query1 = `
+      INSERT INTO contacts (
+        user_low, 
+        user_high, 
+        status, 
+        initiated_by, 
+        user_low_unseen, 
+        user_high_unseen, 
+        user_low_time, 
+        user_high_time
+      )
+      VALUES (
+        $1::uuid, 
+        $2::uuid, 
+        'pending', 
+        $3::uuid, 
+        0, 
+        0, 
+        NOW(), 
+        NOW()
+      )
+      ON CONFLICT (user_low, user_high) DO NOTHING
+      RETURNING *;
+    `;
 
-const { rows:contact } = await db.query(query1, [userLow, userHigh, senderId]);
+    const { rows: contactRows } = await db.query(query1, [userLow, userHigh, senderId]);
 
-const query2 = `
-  SELECT * 
-  FROM users 
-  WHERE id IN ($1::uuid, $2::uuid);
-`;
-
-const { rows: userProfiles } = await db.query(query2, [senderId, receiverId]);
-const senderUser = userProfiles.find(u => u.id === senderId);
-const receiverUser = userProfiles.find(u => u.id === receiverId);
-const usersToProcess = [
-  { targetUser: senderUser, partnerUser: receiverUser },
-  { targetUser: receiverUser, partnerUser: senderUser }
-];
-const results = usersToProcess.map(({ targetUser, partnerUser }) => {
-  // Determine if this user sits on the low side or high side
-  const isLow = contact.user_low === targetUser.id;
-
-  return {
-    contact_id: contact.id,
-    status: contact.status,
-    initiated_by: contact.initiated_by,
-    contact_created_at: contact.created_at,
-    
-    // Pick unseen, rank, and time dynamically based on user_low vs user_high
-    unseen: isLow ? contact.user_low_unseen : contact.user_high_unseen,
-    rank: isLow ? contact.user_low_rank : contact.user_high_rank,
-    time: isLow ? contact.user_low_time : contact.user_high_time,
-
-    // Attach the opposite user's profile
-    contact: {
-      id: partnerUser.id,
-      name: partnerUser.name,
-      email: partnerUser.email,
-      avatar_url: partnerUser.avatar_url
-    }
-  };
-});
-
-// Index 0: Sender Payload
-const senderData = results[0];
-
-// Index 1: Receiver Payload
-const receiverData = results[1];
-
-
-    // Conflict triggered -> ON CONFLICT DO NOTHING produced 0 rows -> exit immediately
-    if (!rows || rows.length === 0) {
+    // Check if a row was inserted (conflict would produce 0 rows)
+    if (!contactRows || contactRows.length === 0) {
       return { success: false, message: 'Contact already exists.' };
     }
+
+    const insertedContact = contactRows[0]; // Extracted single contact row
+
+    // Fetch user profiles only because contact row was successfully inserted
+    const query2 = `
+      SELECT id, name, email, avatar_url 
+      FROM users 
+      WHERE id IN ($1::uuid, $2::uuid);
+    `;
+
+    const { rows: userProfiles } = await db.query(query2, [senderId, receiverId]);
+
+    const senderUser = userProfiles.find(u => u.id === senderId);
+    const receiverUser = userProfiles.find(u => u.id === receiverId);
+
+    const usersToProcess = [
+      { targetUser: senderUser, partnerUser: receiverUser },
+      { targetUser: receiverUser, partnerUser: senderUser }
+    ];
+
+    const results = usersToProcess.map(({ targetUser, partnerUser }) => {
+      // Determine if this user sits on the low side or high side
+      const isLow = insertedContact.user_low === targetUser.id;
+
+      return {
+        contact_id: insertedContact.id,
+        status: insertedContact.status,
+        initiated_by: insertedContact.initiated_by,
+        contact_created_at: insertedContact.created_at,
+
+        // Pick unseen, rank, and time dynamically based on user_low vs user_high
+        unseen: isLow ? insertedContact.user_low_unseen : insertedContact.user_high_unseen,
+        rank: isLow ? insertedContact.user_low_rank : insertedContact.user_high_rank,
+        time: isLow ? insertedContact.user_low_time : insertedContact.user_high_time,
+
+        // Attach the opposite user's profile
+        contact: {
+          id: partnerUser.id,
+          name: partnerUser.name,
+          email: partnerUser.email,
+          avatar_url: partnerUser.avatar_url
+        }
+      };
+    });
+
     return { 
       success: true, 
-      senderData: senderData,       // Main data returned for API response to sender
-      receiverData: receiverData // Payload to emit via Socket.io / Push notification to receiver
+      senderData: results[0],   // Formatted object for Sender
+      receiverData: results[1]  // Formatted object for Receiver
     };
+
   } catch (err) {
     console.error('Error in createPendingContact:', err);
     throw err;
