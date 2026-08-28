@@ -387,8 +387,6 @@ module.exports = function registerSocketHandlers(io) {
 `;
 
             await db.query(query, [currentUserId, targetUserId]);
-
-           
           }
         }
       } catch (err) {
