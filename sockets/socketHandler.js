@@ -292,6 +292,7 @@ await db.query(updateRankQuery, [targetUserId, newContact.senderData.contact_id]
 
 
     socket.on('accept_invite', async (data) => {
+      console.log("hello world");
       try {
         const currentUserId = socket.userId;
         const targetUserId = data?.targetUserId; // Friend who sent the request
