@@ -278,77 +278,50 @@ async function acceptContact(currentUserId, targetUserId) {
     const userHigh = isUser1Low ? targetUserId : currentUserId;
 
     const query = `
-      WITH shift_ranks AS (
-        -- Shift existing accepted contacts down by +1 for both users
-        UPDATE contacts
-        SET 
-          user_low_rank = CASE 
-            WHEN user_low = $1::uuid OR user_low = $2::uuid THEN user_low_rank + 1 
-            ELSE user_low_rank 
-          END,
-          user_high_rank = CASE 
-            WHEN user_high = $1::uuid OR user_high = $2::uuid THEN user_high_rank + 1 
-            ELSE user_high_rank 
-          END
-        WHERE (user_low IN ($1::uuid, $2::uuid) OR user_high IN ($1::uuid, $2::uuid))
-          AND status = 'accepted'
-          AND NOT (user_low = $3::uuid AND user_high = $4::uuid)
-        RETURNING id
-      ),
-      updated_contact AS (
-        -- Set the accepted request to status 'accepted' and rank 1 for both
-        UPDATE contacts
-        SET 
-          status = 'accepted',
-          user_low_rank = 1,
-          user_high_rank = 1,
-          user_low_unseen = 0,
-          user_high_unseen = 0
-        WHERE user_low = $3::uuid 
-          AND user_high = $4::uuid
-          AND status = 'pending'
-          -- FORCES execution order: wait for shift_ranks to complete
-          AND (SELECT count(*) FROM shift_ranks) >= 0
-        RETURNING *
-      )
-      SELECT 
-        c.id AS contact_id,
-        c.status,
-        c.initiated_by,
-        c.created_at AS contact_created_at,
-
-        CASE 
-          WHEN c.user_low = $1::uuid THEN c.user_low_rank 
-          ELSE c.user_high_rank 
-        END AS rank,
-
-        CASE 
-          WHEN c.user_low = $1::uuid THEN c.user_low_unseen 
-          ELSE c.user_high_unseen 
-        END AS unseen,
-
-        jsonb_build_object(
-          'id', u.id,
-          'name', u.name,
-          'email', u.email,
-          'avatar_url', u.avatar_url
-        ) AS contact
-      FROM updated_contact c
-      JOIN users u ON u.id = $2::uuid;
+  WITH shift_ranks AS (
+  -- Shift existing accepted contacts down by +1 for both users
+  UPDATE contacts
+  SET 
+    user_low_rank = CASE 
+      WHEN user_low = $1::uuid OR user_low = $2::uuid THEN user_low_rank + 1 
+      ELSE user_low_rank 
+    END,
+    user_high_rank = CASE 
+      WHEN user_high = $1::uuid OR user_high = $2::uuid THEN user_high_rank + 1 
+      ELSE user_high_rank 
+    END
+  WHERE (user_low IN ($1::uuid, $2::uuid) OR user_high IN ($1::uuid, $2::uuid))
+    AND status = 'accepted'
+    AND NOT (user_low = $3::uuid AND user_high = $4::uuid)
+  RETURNING id
+),
+updated_contact AS (
+  -- Set the accepted request to status 'accepted' and rank 1 for both
+  UPDATE contacts
+  SET 
+    status = 'accepted',
+    user_low_rank = 1,
+    user_high_rank = 1,
+    user_low_unseen = 0,
+    user_high_unseen = 0
+  WHERE user_low = $3::uuid 
+    AND user_high = $4::uuid
+    AND status = 'pending'
+    -- FORCES execution order: wait for shift_ranks to complete
+    AND (SELECT count(*) FROM shift_ranks) >= 0
+  RETURNING id
+)
+SELECT id FROM updated_contact;
     `;
 
-    const { rows } = await db.query(query, [
-      currentUserId, // $1
-      targetUserId,  // $2
-      userLow,       // $3
-      userHigh       // $4
-    ]);
+  const { rows } = await db.query(query, [userId1, userId2, userLow, userHigh]);
+const updatedContactId = rows[0]?.id;
 
     if (rows.length === 0) {
       return { success: false, message: 'Pending contact request not found' };
     }
 
-    return { success: true, contact: rows[0] };
+    return { success: true, contact_id:updatedContactId };
   } catch (err) {
     console.error('Error in acceptContact:', err);
     throw err;

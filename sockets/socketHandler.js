@@ -241,6 +241,7 @@ console.log(newContact);
         socket.emit('send_invite_res', {
           success: true,
           contact: newContact.senderData,
+          type:"self"
         });
 
         // 1. Check Local Server (RAM)
@@ -251,6 +252,7 @@ console.log(newContact);
           io.to(targetUserId).emit('new_invite_received', {
             success: true,
             contact: newContact.receiverData,
+            type:"new"
           });
         } else {
           // 2. Local check failed -> Check Redis (Server 2 / Server 3)
@@ -261,6 +263,7 @@ console.log(newContact);
             io.to(targetUserId).emit('new_invite_received', {
               success: true,
               contact: newContact.receiverData,
+              type:"new"
             });
           } else {
             console.log(`🌙 Target user ${targetUserId} is completely offline.`);
@@ -313,23 +316,10 @@ console.log(result);
         // 2. Emit success response BACK to the user who clicked Accept
         socket.emit('accept_invite_res', {
           success: true,
-          contact: result.contact,
+          contact: result.contact_id,
           message: 'Invite accepted successfully',
         });
 
-        // 3. Fetch email details for the friend who sent the request
-        const userQuery = `SELECT email, name FROM users WHERE id = $1::uuid;`;
-        const { rows: friendRows } = await db.query(userQuery, [targetUserId]);
-
-        const friendUser = friendRows[0];
-        const friendEmail = friendUser?.email;
-        const friendName = friendUser?.name || 'User';
-
-  
-
-        // -------------------------------------------------------------
-        // DUAL-LAYER PRESENCE CHECK FOR FRIEND (targetUserId)
-        // -------------------------------------------------------------
 
         // 1. LOCAL CHECK (Friend is on THIS server)
         const localSocketId = getSocketIdByUserId(targetUserId);
@@ -343,7 +333,7 @@ console.log(result);
           console.log('--------------------------------------------------');
 
           // Send result.contact directly as payload
-          io.to(targetUserId).emit('accepted_your_invite', result.contact);
+          io.to(targetUserId).emit('accepted_your_invite', result.contact_id);
          
 
         } else {
@@ -362,7 +352,7 @@ console.log(result);
             console.log('--------------------------------------------------');
 
             // Send result.contact directly as payload
-            io.to(targetUserId).emit('accepted_your_invite', result.contact);
+            io.to(targetUserId).emit('accepted_your_invite', result.contact_id);
            
 
           } else {
@@ -372,7 +362,7 @@ console.log(result);
             console.log('✉️ Proceeding with email notification only.');
             console.log('--------------------------------------------------');
 
-            const query = `
+const query = `
   UPDATE contacts
   SET 
     user_low_time = CASE 
@@ -391,11 +381,10 @@ console.log(result);
       WHEN user_high = $2::uuid THEN COALESCE(user_high_unseen, 0) + 1 
       ELSE user_high_unseen 
     END
-  WHERE (user_low = $1::uuid AND user_high = $2::uuid)
-     OR (user_low = $2::uuid AND user_high = $1::uuid);
+  WHERE id = $1::bigint;
 `;
 
-            await db.query(query, [currentUserId, targetUserId]);
+await db.query(query, [result.contact_id, targetUserId]);
           }
         }
       } catch (err) {

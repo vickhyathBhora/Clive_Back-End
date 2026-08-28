@@ -19,7 +19,7 @@ const app = express();
 // Whitelist allowed origins strictly
 const allowedOrigins = [
   FRONTEND_URL.replace(/\/$/, ''),
-  'http://localhost:5173',
+  'http://localhost:5010',
   'http://localhost:3000'
 ];
 
