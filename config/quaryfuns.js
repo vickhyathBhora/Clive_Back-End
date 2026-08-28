@@ -202,7 +202,10 @@ const query2 = `
 const { rows: userProfiles } = await db.query(query2, [senderId, receiverId]);
 const senderUser = userProfiles.find(u => u.id === senderId);
 const receiverUser = userProfiles.find(u => u.id === receiverId);
-
+const usersToProcess = [
+  { targetUser: senderUser, partnerUser: receiverUser },
+  { targetUser: receiverUser, partnerUser: senderUser }
+];
 const results = usersToProcess.map(({ targetUser, partnerUser }) => {
   // Determine if this user sits on the low side or high side
   const isLow = contact.user_low === targetUser.id;
