@@ -398,7 +398,7 @@ console.log(result);
       }
     });
 
-    socket.on('reject_invite', async (data) => {
+  /*  socket.on('reject_invite', async (data) => {
       try {
          console.log('Reject invite payload received:', data);
 
@@ -506,7 +506,7 @@ console.log(result);
         });
       }
     });
-
+*/
     socket.on('send_message', async (data) => {
       console.log('📥 [BACKEND] Received sendmessage payload:', data);
 
