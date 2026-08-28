@@ -58,6 +58,22 @@ async function fetchAllContacts(userId) {
     `;
 
     const { rows } = await db.query(query, [userId]);
+const offlineContactIds = rows
+      .filter((row) => row.rank === -1)
+      .map((row) => row.contact_id);
+if (offlineContactIds.length > 0) {
+  const updateQuery = `
+    UPDATE contacts
+    SET 
+      user_low_rank = CASE WHEN user_low = $1::uuid AND user_low_rank = -1 THEN 0 ELSE user_low_rank END,
+      user_high_rank = CASE WHEN user_high = $1::uuid AND user_high_rank = -1 THEN 0 ELSE user_high_rank END
+    WHERE id = $2::uuid;
+  `;
+
+  for (const contactId of offlineContactIds) {
+    await db.query(updateQuery, [userId, contactId]);
+  }
+}
     return rows;
   } catch (err) {
     console.error('Error in fetchAllContacts:', err);
