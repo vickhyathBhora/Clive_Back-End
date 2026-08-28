@@ -205,7 +205,7 @@ const receiverUser = userProfiles.find(u => u.id === receiverId);
 
 const results = usersToProcess.map(({ targetUser, partnerUser }) => {
   // Determine if this user sits on the low side or high side
-  const isLow = contactRow.user_low === targetUser.id;
+  const isLow = contact.user_low === targetUser.id;
 
   return {
     contact_id: contactRow.id,
