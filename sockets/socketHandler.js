@@ -336,6 +336,7 @@ console.log(result);
 
           // Send result.contact directly as payload
         io.to(targetUserId).emit('accepted_your_invite', {
+          success: true,
   contactId: result.contactId,
   type: 'new'});
          
@@ -356,6 +357,7 @@ console.log(result);
             console.log('--------------------------------------------------');
 
           io.to(targetUserId).emit('accepted_your_invite', {
+            success: true,
   contactId: result.contactId,
   type: 'new'});
           } else {
