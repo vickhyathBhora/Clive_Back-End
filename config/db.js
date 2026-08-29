@@ -5,23 +5,23 @@ const isProduction = !!process.env.DATABASE_URL;
 
 const poolConfig = isProduction
   ? {
-    connectionString: process.env.DATABASE_URL,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 30000,
-    ssl: { rejectUnauthorized: false },
-  }
+      connectionString: process.env.DATABASE_URL,
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 30000,
+      ssl: { rejectUnauthorized: false },
+    }
   : {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'clive_db',
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 30000,
-    ssl: false, // Disable SSL for local database
-  };
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME || 'clive_db',
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 30000,
+      ssl: false, // Disable SSL for local database
+    };
 
 const pool = new Pool(poolConfig);
 
@@ -72,42 +72,40 @@ const createTablesQuery = `
   CREATE INDEX IF NOT EXISTS idx_contacts_low_rank ON contacts(user_low, user_low_rank ASC);
   CREATE INDEX IF NOT EXISTS idx_contacts_high_rank ON contacts(user_high, user_high_rank ASC);
 
-  -- 1. Create Messages Table
+-- 1. Create Messages Table
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGSERIAL PRIMARY KEY,
+  contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-  CREATE TABLE IF NOT EXISTS messages (
-    id BIGSERIAL PRIMARY KEY,
-    contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-  );
+-- 2. Index to optimize querying and deleting per contact_id
+CREATE INDEX IF NOT EXISTS idx_messages_contact_created 
+ON messages(contact_id, created_at DESC);
 
-  -- 2. Index to optimize querying and deleting per contact_id
+-- 3. Trigger Function: Deletes messages past the 20th newest per contact_id
+CREATE OR REPLACE FUNCTION cap_contact_messages()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM messages
+  WHERE contact_id = NEW.contact_id
+    AND id NOT IN (
+      SELECT id FROM messages
+      WHERE contact_id = NEW.contact_id
+      ORDER BY created_at DESC, id DESC
+      LIMIT 20
+    );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-  CREATE INDEX IF NOT EXISTS idx_messages_contact_created
-  ON messages(contact_id, created_at DESC);
-
-  -- 3. Trigger Function: Deletes messages past the 10th newest per contact_id
-  CREATE OR REPLACE FUNCTION cap_contact_messages()
-  RETURNS TRIGGER AS $$
-  BEGIN
-    DELETE FROM messages
-    WHERE contact_id = NEW.contact_id
-      AND id NOT IN (
-        SELECT id FROM messages
-        WHERE contact_id = NEW.contact_id
-        ORDER BY created_at DESC, id DESC
-        LIMIT 10
-      );
-    RETURN NEW;
-  END;
-  $$ LANGUAGE plpgsql;
-  -- 4. Attach Trigger
-  CREATE OR REPLACE TRIGGER enforce_10_message_limit
-  AFTER INSERT ON messages
-  FOR EACH ROW
-  EXECUTE FUNCTION cap_contact_messages();`;
+CREATE OR REPLACE TRIGGER enforce_20_message_limit
+AFTER INSERT ON messages
+FOR EACH ROW
+EXECUTE FUNCTION cap_contact_messages();`;
 
 const initDb = async () => {
   try {
