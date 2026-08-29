@@ -300,7 +300,7 @@ const updatedContactId = rows[0]?.id;
       return { success: false, message: 'Pending contact request not found' };
     }
 
-    return { success: true, contact_id:updatedContactId };
+    return { success: true, contactId:updatedContactId };
   } catch (err) {
     console.error('Error in acceptContact:', err);
     throw err;

@@ -307,7 +307,7 @@ await db.query(updateRankQuery, [targetUserId, newContact.senderData.contact_id]
         // 1. DB transaction: Shift ranks + update status to accepted
         const result = await acceptContact(currentUserId, targetUserId);
 console.log(result);
-        if (!result.success || !result.contact_id) {
+        if (!result.success || !result.contactId) {
           return socket.emit('accept_invite_res', {
             success: false,
             message: result.message || 'Pending contact request not found',
@@ -317,7 +317,7 @@ console.log(result);
         // 2. Emit success response BACK to the user who clicked Accept
         socket.emit('accept_invite_res', {
           success: true,
-          contact_id: result.contact_id,
+          contactId: result.contactId,
           message: 'Invite accepted successfully',
           type:'self'
         });
@@ -336,7 +336,7 @@ console.log(result);
 
           // Send result.contact directly as payload
         io.to(targetUserId).emit('accepted_your_invite', {
-  contact_id: result.contact_id,
+  contactId: result.contactId,
   type: 'new'});
          
 
@@ -356,15 +356,12 @@ console.log(result);
             console.log('--------------------------------------------------');
 
           io.to(targetUserId).emit('accepted_your_invite', {
-  contact_id: result.contact_id,
+  contactId: result.contactId,
   type: 'new'});
-
           } else {
             // 3. OFFLINE CHECK (Friend is offline everywhere)
             console.log('🔍 [PRESENCE DEBUG] Redis Check: NOT FOUND.');
             console.log(`💤 User ${targetUserId} is OFFLINE on all servers.`);
-            console.log('✉️ Proceeding with email notification only.');
-            console.log('--------------------------------------------------');
 
 const query = `
   UPDATE contacts
