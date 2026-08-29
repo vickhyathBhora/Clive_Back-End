@@ -138,20 +138,19 @@ async function removeContact(contactId) {
     };
   }
 }
-async function getMessagesByContactId(contactId, limit = 10) {
+async function getMessagesByContactId(contactId) {
   try {
     const { rows } = await db.query(
-      `SELECT id, contact_id, sender_id, receiver_id, content, created_at 
+      `SELECT * 
        FROM messages 
-       WHERE contact_id = $1
-       ORDER BY created_at ASC
-       LIMIT $2;`,
-      [contactId, limit]
+       WHERE contact_id = $1 
+       ORDER BY created_at ASC;`,
+      [contactId]
     );
     return rows;
-  } catch (err) {
-    console.error('Error in getMessagesByContactId:', err);
-    throw err;
+  } catch (error) {
+    console.error('Error fetching messages by contact_id:', error);
+    throw error;
   }
 }
 
