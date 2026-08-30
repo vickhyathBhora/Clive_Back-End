@@ -1,13 +1,11 @@
 const { createClient } = require('redis');
 
-const redisUrl = process.env.REDIS_URL;
-
-// Only enable TLS if the URL starts with "rediss://" (used by cloud Redis, not local)
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 const isTls = redisUrl.startsWith('rediss://');
 
 const redisClient = createClient({
   url: redisUrl,
-  ...(isTls && { socket: { tls: true, rejectUnauthorized: false } })
+  socket: isTls ? { rejectUnauthorized: false } : undefined
 });
 
 redisClient.on('error', (err) => console.error('❌ Redis Presence Error:', err));
@@ -18,6 +16,8 @@ async function connectPresence() {
     console.log('⚡ Redis Presence Manager Connected');
   }
 }
+
+module.exports = { redisClient, connectPresence };
 /**
  * Saves user session to Redis on connection.
  * Key existence = User is Online.
