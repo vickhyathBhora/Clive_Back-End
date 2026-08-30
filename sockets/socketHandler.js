@@ -83,7 +83,6 @@ module.exports = function registerSocketHandlers(io) {
     console.log(`⚡ Socket Connected: ${socket.id} | User ID: ${currentUserId}`);
 
       await addUserRadis(currentUserId, socket.id);
-      console.log(`⚡ Redis Presence Updated | User: ${currentUserId} registered to ${SERVER_ID}`);
     } catch (err) {
       console.error('❌ Redis Error on connection:', err);
     }
