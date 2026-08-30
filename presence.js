@@ -1,44 +1,34 @@
 const { createClient } = require('redis');
 
-// Initialize Redis Client safely for Upstash Cloud TLS
+const redisUrl = process.env.REDIS_URL_LOCAL || 'redis://localhost:6379';
+
+// Only enable TLS if the URL starts with "rediss://" (used by cloud Redis, not local)
+const isTls = redisUrl.startsWith('rediss://');
+
 const redisClient = createClient({
-  url: process.env.REDIS_URL,
-  socket: {
-    tls: true,
-    rejectUnauthorized: false
-  }
+  url: redisUrl,
+  ...(isTls && { socket: { tls: true, rejectUnauthorized: false } })
 });
 
 redisClient.on('error', (err) => console.error('❌ Redis Presence Error:', err));
 
-/**
- * Connects to Redis (Call this during server boot or before execution)
- */
 async function connectPresence() {
-  if (!process.env.REDIS_URL) {
-    console.error('❌ REDIS_URL environment variable is missing in Vercel settings!');
-    return;
-  }
-
   if (!redisClient.isOpen) {
     await redisClient.connect();
     console.log('⚡ Redis Presence Manager Connected');
   }
 }
-
 /**
  * Saves user session to Redis on connection.
  * Key existence = User is Online.
  */
-async function addUserRadis(userId, socketId, serverId, selectedId = null) {
+async function addUserRadis(userId, socketId) {
   if (!userId) return;
   await connectPresence(); // Ensure connected before query
   const key = `user:${userId}:presence`;
 
   await redisClient.hSet(key, {
     socketId: String(socketId),
-    serverId: String(serverId),
-    selectedId: selectedId ? String(selectedId) : '' // Stores active contact_id or empty string
   });
 }
 

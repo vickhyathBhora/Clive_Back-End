@@ -27,11 +27,10 @@ const { addUserRadis,
   getUserRadis,
 } = require('../presence'); // your Redis presence helper
 
-const SERVER_ID = process.env.SERVER_ID || 'server_1';
 
 // Configure Nodemailer transporter
 
-
+const radisCheck = false;
 module.exports = function registerSocketHandlers(io) {
   // 1. AUTHENTICATION MIDDLEWARE
   io.use(socketConnectionGuard);
@@ -83,7 +82,7 @@ module.exports = function registerSocketHandlers(io) {
           addConnectedUser(currentUserId, socket.id);
     console.log(`⚡ Socket Connected: ${socket.id} | User ID: ${currentUserId}`);
 
-      await addUserRadis(currentUserId, socket.id, SERVER_ID);
+      await addUserRadis(currentUserId, socket.id);
       console.log(`⚡ Redis Presence Updated | User: ${currentUserId} registered to ${SERVER_ID}`);
     } catch (err) {
       console.error('❌ Redis Error on connection:', err);
@@ -255,9 +254,10 @@ console.log(newContact);
             type:"new"
           });
         } else {
-          // 2. Local check failed -> Check Redis (Server 2 / Server 3)
-          const redisPresence = await getUserRadis(targetUserId);
-
+          const redisPresence=null;
+       if(radisCheck){
+           redisPresence = await getUserRadis(targetUserId);
+       }
           if (redisPresence) {
             console.log(`⚡ Target user ${targetUserId} is online on Redis node (${redisPresence.serverId})! Emitting live invite.`);
             io.to(targetUserId).emit('new_invite_received', {
@@ -347,7 +347,10 @@ console.log(result);
           console.log('🔍 [PRESENCE DEBUG] Local Check: NOT FOUND in RAM.');
           console.log(`📍 Querying Redis for Target User ID: ${targetUserId}...`);
 
-          const redisPresence = await getUserRadis(targetUserId);
+      const redisPresence=null;
+       if(radisCheck){
+           redisPresence = await getUserRadis(targetUserId);
+       }
 
           if (redisPresence) {
             console.log('🔍 [PRESENCE DEBUG] Redis Check: MATCH FOUND!');
@@ -570,7 +573,11 @@ await db.query(query, [result.contact_id, targetUserId]);
           }
           isDelivered = true;
         } else {
-          const redisPresence = await getUserRadis(receiver_id);
+      const redisPresence=null;
+       if(radisCheck){
+           redisPresence = await getUserRadis(targetUserId);
+       }
+
           if (redisPresence) {
             console.log(`⚡ [BACKEND] Target user ${receiver_id} found in Redis! Emitting new_message.`);
             io.to(receiver_id).emit('new_message', {
