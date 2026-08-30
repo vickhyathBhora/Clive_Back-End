@@ -1,6 +1,6 @@
 const { createClient } = require('redis');
 
-const redisUrl = process.env.REDIS_URL_LOCAL || 'redis://localhost:6379';
+const redisUrl = process.env.REDIS_URL;
 
 // Only enable TLS if the URL starts with "rediss://" (used by cloud Redis, not local)
 const isTls = redisUrl.startsWith('rediss://');
