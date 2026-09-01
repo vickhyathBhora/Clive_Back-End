@@ -70,8 +70,7 @@ router.get('/offline_unseen', authenticateToken, async (req, res) => {
   try {
     // 1. Log req.user payload received from authenticateToken middleware
 
-    const userId = req.user?.id || req.user?.userId;
-
+    const userId = req.user?.id;
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -117,5 +116,34 @@ router.get('/offline_unseen', authenticateToken, async (req, res) => {
     });
   }
 });
+router.put('/update_username', authenticateToken, async (req, res) => {
+  const userId = req.user?.id;
+  const { name } = req.body;
 
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Name is required' });
+  }
+
+  try {
+    const updateQuery = `
+      UPDATE users 
+      SET name = $1 
+      WHERE id = $2;
+    `;
+
+    await db.query(updateQuery, [name.trim(), String(userId)]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Username updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating username:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 module.exports = router;
