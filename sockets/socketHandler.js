@@ -81,8 +81,8 @@ module.exports = function registerSocketHandlers(io) {
     try {
           addConnectedUser(currentUserId, socket.id);
     console.log(`⚡ Socket Connected: ${socket.id} | User ID: ${currentUserId}`);
-
-      await addUserRadis(currentUserId, socket.id);
+if(radisCheck){
+      await addUserRadis(currentUserId, socket.id);}
     } catch (err) {
       console.error('❌ Redis Error on connection:', err);
     }
@@ -721,13 +721,13 @@ await db.query(query, [result.contact_id, targetUserId]);
       removeConnectedUser(currentUserId);
       console.log(`❌ Socket Disconnected [${socket.id}]: ${reason}`);
 
-      // Step B: Remove from Redis presence
+     if(radisCheck){
       try {
         await removeUserRadis(currentUserId);
         console.log(`❌ Removed from Redis presence [User ${currentUserId}]`);
       } catch (err) {
         console.error('❌ Redis Error on disconnect:', err);
-      }
+      }}
 
     });
   });
