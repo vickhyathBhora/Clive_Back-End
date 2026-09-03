@@ -648,8 +648,9 @@ await db.query(query, [result.contact_id, targetUserId]);
 
     socket.on('update_unseen', async ({ contact_id }) => {
       const userId = socket.userId; // Or pass userId from frontend if not stored on socket session
+      if(radisCheck){
       await updateUserSelectedChat(userId, contact_id);
-
+      }
       await updateUserSelectedChatLocal(userId, contact_id);
       try {
         const query = `
