@@ -21,6 +21,7 @@
     "nodemailer": "^9.0.5",
     "pg": "^8.23.0",
     "redis": "^6.2.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "vickycliveimpfunsquarys": "^1.1.3"
   }
 }
