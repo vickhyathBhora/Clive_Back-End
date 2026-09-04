@@ -3,17 +3,11 @@ const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 const { socketConnectionGuard } = require('../middleware/systemGuard');
 const { applySocketThrottling } = require('../middleware/socketThrottle');
-const {
-  createPendingContact,
+const { createPendingContact,
   fetchAllContacts,
   getMessagesByContactId,
-  getUserById,
-  deleteMessagesByContactId,
-  removeContact,
-  acceptContact,
-} = require('../config/quaryfuns');
-
-
+  acceptContact, } = require('vickycliveimpfunsquarys');
+  
 const {
   addConnectedUser,
   removeConnectedUser,
@@ -90,7 +84,7 @@ if(radisCheck){
     // Request Initial Data Handler
     socket.on('request_initial_data', async (payload) => {
       try {
-        const res = await fetchAllContacts(socket.userId);
+        const res = await fetchAllContacts(db,socket.userId);
 
         socket.emit('initial_data', {
           status: 'success',
@@ -203,7 +197,7 @@ if(radisCheck){
           });
         }
 
-        const messages = await getMessagesByContactId(contactId);
+        const messages = await getMessagesByContactId(db,contactId);
 
         // Emit response back to sender
         socket.emit('get_messages_res', {
@@ -233,7 +227,7 @@ if(radisCheck){
         }
 
         // 1. Save pending contact in PostgreSQL
-        const newContact = await createPendingContact(currentUserId, targetUserId);
+        const newContact = await createPendingContact(db,currentUserId, targetUserId);
 console.log(newContact);
         // 2. Emit success response back to the sender
         socket.emit('send_invite_res', {
@@ -304,7 +298,7 @@ await db.query(updateRankQuery, [targetUserId, newContact.senderData.contact_id]
         }
 
         // 1. DB transaction: Shift ranks + update status to accepted
-        const result = await acceptContact(currentUserId, targetUserId);
+        const result = await acceptContact(db,currentUserId, targetUserId);
 console.log(result);
         if (!result.success || !result.contactId) {
           return socket.emit('accept_invite_res', {
