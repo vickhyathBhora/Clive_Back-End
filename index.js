@@ -19,6 +19,7 @@ const app = express();
 // Whitelist allowed origins strictly
 const allowedOrigins = [
   FRONTEND_URL.replace(/\/$/, ''),
+'https://clive-front-end.onrender.com',
   'http://localhost:5010',
   'http://localhost:3000'
 ];
